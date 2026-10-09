@@ -1,0 +1,538 @@
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-1-before\\src\\server\\city-detail.ts" "b/src\\server\\city-detail.ts"
+index a8aea79..80da33c 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-1-before\\src\\server\\city-detail.ts"
++++ "b/src\\server\\city-detail.ts"
+@@ -9,6 +9,14 @@ import {
+   type PublishedMetrics,
+   type PublishedMetricsColumns
+ } from "@/server/comparative-index";
++import {
++  ENVIRONMENTAL_RADII_KM,
++  buildCityEnvironmentalRiskQuery,
++  summarizeEnvironmentalRisk,
++  type EnvironmentalNeighborRow,
++  type EnvironmentalRadiusKm,
++  type EnvironmentalRiskSummary
++} from "@/server/environmental-risk";
+ 
+ type RateDenominator = "population" | "housing" | "unknown";
+ type PublicationStatus = "published" | "masked" | "unknown";
+@@ -39,6 +47,7 @@ export type CityDetail = {
+   }>;
+   historyByCategory: Array<{ code: string; label: string; observations: HistoryObservation[] }>;
+   selectedHistoryCategoryCode: string | null;
++  environmentalRisk: EnvironmentalRiskSummary[];
+ };
+ export type SqlQuery = { text: string; values: Array<string | number> };
+ 
+@@ -251,6 +260,13 @@ type RawComparisonRow = {
+   rate_per_1000: string | null; total_city_count: number; published_city_count: number;
+   coverage_ratio: string | null; denominator_years: number[];
+ };
++type RawEnvironmentalRiskRow = {
++  radius_km: EnvironmentalRadiusKm;
++  target_coordinates_available: boolean;
++  neighbor_insee_code: string | null;
++  distance_km: number | null;
++  comparative_index: number | null;
++};
+ 
+ export async function getCityDetail(db: Queryable, params: CityDetailParams): Promise<CityDetail | null> {
+   const detailQuery = buildCityDetailQuery(params);
+@@ -260,9 +276,13 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
+ 
+   const historyQuery = buildCityHistoryQuery(params.inseeCode, row.snapshot_id);
+   const comparisonsQuery = buildCityComparisonQuery(params, row.snapshot_id);
+-  const [historyResult, comparisonsResult] = await Promise.all([
++  const environmentalQuery = buildCityEnvironmentalRiskQuery(
++    params.inseeCode, params.year, row.snapshot_id
++  );
++  const [historyResult, comparisonsResult, environmentalResult] = await Promise.all([
+     db.query<RawHistoryRow>(historyQuery.text, historyQuery.values),
+-    db.query<RawComparisonRow>(comparisonsQuery.text, comparisonsQuery.values)
++    db.query<RawComparisonRow>(comparisonsQuery.text, comparisonsQuery.values),
++    db.query<RawEnvironmentalRiskRow>(environmentalQuery.text, environmentalQuery.values)
+   ]);
+ 
+   const historyMap = new Map<string, CityDetail["historyByCategory"][number]>();
+@@ -307,6 +327,29 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
+       category.observations.some((observation) => observation.publicationStatus === "published")
+     )?.code ?? historyByCategory[0]?.code ?? null;
+ 
++  const environmentalNeighbors = new Map<EnvironmentalRadiusKm, EnvironmentalNeighborRow[]>(
++    ENVIRONMENTAL_RADII_KM.map((radiusKm) => [radiusKm, []])
++  );
++  for (const item of environmentalResult.rows) {
++    if (item.neighbor_insee_code === null || item.distance_km === null) continue;
++    environmentalNeighbors.get(item.radius_km)?.push({
++      targetInseeCode: params.inseeCode,
++      neighborInseeCode: item.neighbor_insee_code,
++      distanceKm: Number(item.distance_km),
++      comparativeIndex: item.comparative_index
++    });
++  }
++  const coordinatesAvailable = environmentalResult.rows[0]?.target_coordinates_available ??
++    (row.latitude !== null && row.longitude !== null);
++  const environmentalRisk = ENVIRONMENTAL_RADII_KM.map((radiusKm) =>
++    summarizeEnvironmentalRisk(
++      params.inseeCode,
++      radiusKm,
++      coordinatesAvailable,
++      environmentalNeighbors.get(radiusKm) ?? []
++    )
++  );
++
+   return {
+     inseeCode: row.insee_code, name: row.name,
+     departmentCode: row.department_code, departmentName: row.department_name,
+@@ -316,7 +359,7 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
+     population: row.population, populationYear: row.population_year, year: params.year,
+     published: mapPublishedMetrics(row), comparativeIndex: mapComparativeIndex(row, row.population),
+     categories: row.categories, comparisons: Array.from(comparisonsMap.values()),
+-    historyByCategory, selectedHistoryCategoryCode
++    historyByCategory, selectedHistoryCategoryCode, environmentalRisk
+   };
+ }
+ 
+
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-1-before\\tests\\city-detail-query.test.ts" "b/tests\\city-detail-query.test.ts"
+index f9f193e..d0891d2 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-1-before\\tests\\city-detail-query.test.ts"
++++ "b/tests\\city-detail-query.test.ts"
+@@ -56,7 +56,7 @@ describe("city detail queries", () => {
+     expect(query.text).not.toMatch(/published_incident_count|partial_rate_per_1000/i);
+   });
+ 
+-  it("uses the detail query snapshot for history and comparisons", async () => {
++  it("uses the detail query snapshot for history, comparisons, and environmental risk", async () => {
+     const db = {
+       query: vi.fn(async (text: string, _values: unknown) => {
+         if (text.includes("select tc.*")) {
+@@ -94,14 +94,36 @@ describe("city detail queries", () => {
+           return { rows: [], rowCount: 0 };
+         }
+ 
++        if (text.includes("environmental_radii")) {
++          return {
++            rows: [25, 50, 100, 200].map((radius_km) => ({
++              radius_km,
++              target_coordinates_available: false,
++              target_insee_code: "95584",
++              neighbor_insee_code: null,
++              distance_km: null,
++              comparative_index: null
++            })),
++            rowCount: 4
++          };
++        }
++
+         return { rows: [], rowCount: 0 };
+       })
+     };
+ 
+-    await getCityDetail(db as never, { inseeCode: "95584", year: 2025 });
++    const detail = await getCityDetail(db as never, { inseeCode: "95584", year: 2025 });
+ 
+-    expect(db.query).toHaveBeenCalledTimes(3);
++    expect(db.query).toHaveBeenCalledTimes(4);
+     expect(db.query.mock.calls[1]?.[1]).toEqual(["95584", "42"]);
+     expect(db.query.mock.calls[2]?.[1]).toEqual(["95584", 2025, "42"]);
++    expect(db.query.mock.calls[3]?.[1]).toEqual(["95584", 2025, "42"]);
++    expect(db.query.mock.calls[3]?.[0]).toContain("environmental_radii");
++    expect(detail?.environmentalRisk.map(({ radiusKm, status }) => [radiusKm, status])).toEqual([
++      [25, "coordinates-unavailable"],
++      [50, "coordinates-unavailable"],
++      [100, "coordinates-unavailable"],
++      [200, "coordinates-unavailable"]
++    ]);
+   });
+ });
+
+diff --git "a/src\\server\\environmental-risk.ts" "b/src\\server\\environmental-risk.ts"
+new file mode 100644
+index 0000000..2f22a94
+--- /dev/null
++++ "b/src\\server\\environmental-risk.ts"
+@@ -0,0 +1,193 @@
++export const ENVIRONMENTAL_RADII_KM = [25, 50, 100, 200] as const;
++
++export type EnvironmentalRadiusKm = (typeof ENVIRONMENTAL_RADII_KM)[number];
++export type EnvironmentalRiskStatus =
++  | "comparable"
++  | "insufficient-coverage"
++  | "no-neighbors"
++  | "coordinates-unavailable";
++
++export type EnvironmentalRiskSummary = {
++  radiusKm: EnvironmentalRadiusKm;
++  value: number | null;
++  status: EnvironmentalRiskStatus;
++  scoredNeighborCount: number;
++  totalNeighborCount: number;
++  weightedCoverageRatio: number | null;
++};
++
++export type EnvironmentalNeighborRow = {
++  targetInseeCode: string;
++  neighborInseeCode: string;
++  distanceKm: number;
++  comparativeIndex: number | null;
++};
++
++type CityEnvironmentalRiskQuery = {
++  text: string;
++  values: [string, number, string];
++};
++
++type MapEnvironmentalRiskQuery = {
++  text: string;
++  values: [string[], number, string, number];
++};
++
++export function buildCityEnvironmentalRiskQuery(
++  inseeCode: string,
++  year: number,
++  snapshotId: string
++): CityEnvironmentalRiskQuery {
++  return {
++    values: [inseeCode, year, snapshotId],
++    text: `
++with target as (
++  select insee_code, geom, (geom is not null) as coordinates_available
++  from cities
++  where insee_code = $1
++), environmental_radii(radius_km) as (
++  values (25::integer), (50::integer), (100::integer), (200::integer)
++)
++select
++  environmental_radii.radius_km,
++  target.coordinates_available as target_coordinates_available,
++  target.insee_code as target_insee_code,
++  neighbor.insee_code as neighbor_insee_code,
++  neighbor.distance_km,
++  metrics.comparative_index
++from target
++cross join environmental_radii
++left join lateral (
++  select
++    c.insee_code,
++    c.geom,
++    st_distance(c.geom, target.geom) / 1000.0 as distance_km
++  from cities c
++  where target.geom is not null
++    and c.geom is not null
++    and c.insee_code <> target.insee_code
++    and st_dwithin(c.geom, target.geom, environmental_radii.radius_km * 1000)
++    and st_distance(c.geom, target.geom) < environmental_radii.radius_km * 1000
++) neighbor on true
++left join search_metrics_city_year_comparative metrics
++  on metrics.city_insee_code = neighbor.insee_code
++ and metrics.year = $2
++ and metrics.snapshot_id = $3
++order by environmental_radii.radius_km, neighbor.insee_code
++`.trim()
++  };
++}
++
++export function buildMapEnvironmentalRiskQuery(
++  inseeCodes: string[],
++  year: number,
++  snapshotId: string,
++  radiusKm: EnvironmentalRadiusKm
++): MapEnvironmentalRiskQuery {
++  return {
++    values: [inseeCodes, year, snapshotId, radiusKm * 1000],
++    text: `
++with requested_targets as (
++  select unnest($1::varchar[]) as requested_insee_code
++), targets as (
++  select
++    requested_targets.requested_insee_code,
++    cities.insee_code,
++    cities.geom,
++    (cities.geom is not null) as coordinates_available
++  from requested_targets
++  left join cities on cities.insee_code = requested_targets.requested_insee_code
++)
++select
++  targets.requested_insee_code as target_insee_code,
++  targets.coordinates_available as target_coordinates_available,
++  neighbor.insee_code as neighbor_insee_code,
++  neighbor.distance_km,
++  metrics.comparative_index
++from targets
++left join lateral (
++  select
++    c.insee_code,
++    c.geom,
++    st_distance(c.geom, targets.geom) / 1000.0 as distance_km
++  from cities c
++  where targets.geom is not null
++    and c.geom is not null
++    and c.insee_code <> targets.insee_code
++    and st_dwithin(c.geom, targets.geom, $4)
++    and st_distance(c.geom, targets.geom) < $4
++) neighbor on true
++left join search_metrics_city_year_comparative metrics
++  on metrics.city_insee_code = neighbor.insee_code
++ and metrics.year = $2
++ and metrics.snapshot_id = $3
++order by targets.requested_insee_code, neighbor.insee_code
++`.trim()
++  };
++}
++
++export function summarizeEnvironmentalRisk(
++  targetCode: string,
++  radiusKm: EnvironmentalRadiusKm,
++  coordinatesAvailable: boolean,
++  neighborRows: EnvironmentalNeighborRow[]
++): EnvironmentalRiskSummary {
++  if (!coordinatesAvailable) {
++    return emptySummary(radiusKm, "coordinates-unavailable");
++  }
++
++  const neighbors = neighborRows.filter((neighbor) =>
++    neighbor.neighborInseeCode !== targetCode &&
++    Number.isFinite(neighbor.distanceKm) &&
++    neighbor.distanceKm >= 0 &&
++    neighbor.distanceKm < radiusKm
++  );
++
++  if (neighbors.length === 0) {
++    return emptySummary(radiusKm, "no-neighbors");
++  }
++
++  let totalWeight = 0;
++  let scoredWeight = 0;
++  let weightedIndex = 0;
++  let scoredNeighborCount = 0;
++
++  for (const neighbor of neighbors) {
++    const weight = 1 - neighbor.distanceKm / radiusKm;
++    totalWeight += weight;
++
++    if (neighbor.comparativeIndex === null || !Number.isFinite(neighbor.comparativeIndex)) {
++      continue;
++    }
++
++    scoredNeighborCount += 1;
++    scoredWeight += weight;
++    weightedIndex += neighbor.comparativeIndex * weight;
++  }
++
++  const weightedCoverageRatio = scoredWeight / totalWeight;
++  const comparable = scoredNeighborCount >= 3 && weightedCoverageRatio >= 0.5;
++
++  return {
++    radiusKm,
++    value: comparable ? Math.round((weightedIndex / scoredWeight) * 10) / 10 : null,
++    status: comparable ? "comparable" : "insufficient-coverage",
++    scoredNeighborCount,
++    totalNeighborCount: neighbors.length,
++    weightedCoverageRatio
++  };
++}
++
++function emptySummary(
++  radiusKm: EnvironmentalRadiusKm,
++  status: "no-neighbors" | "coordinates-unavailable"
++): EnvironmentalRiskSummary {
++  return {
++    radiusKm,
++    value: null,
++    status,
++    scoredNeighborCount: 0,
++    totalNeighborCount: 0,
++    weightedCoverageRatio: null
++  };
++}
+
+diff --git "a/tests\\environmental-risk.test.ts" "b/tests\\environmental-risk.test.ts"
+new file mode 100644
+index 0000000..c9cb121
+--- /dev/null
++++ "b/tests\\environmental-risk.test.ts"
+@@ -0,0 +1,181 @@
++import { describe, expect, it } from "vitest";
++
++import {
++  ENVIRONMENTAL_RADII_KM,
++  buildCityEnvironmentalRiskQuery,
++  buildMapEnvironmentalRiskQuery,
++  summarizeEnvironmentalRisk,
++  type EnvironmentalNeighborRow
++} from "../src/server/environmental-risk";
++
++function neighbor(
++  neighborInseeCode: string,
++  distanceKm: number,
++  comparativeIndex: number | null,
++  targetInseeCode = "95584"
++): EnvironmentalNeighborRow {
++  return { targetInseeCode, neighborInseeCode, distanceKm, comparativeIndex };
++}
++
++describe("environmental risk summaries", () => {
++  it("uses the linear distance weights for a comparable score", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("01001", 0, 20),
++      neighbor("01002", 12.5, 80),
++      neighbor("01003", 10, 40)
++    ]);
++
++    expect(summary).toEqual({
++      radiusKm: 25,
++      value: 40,
++      status: "comparable",
++      scoredNeighborCount: 3,
++      totalNeighborCount: 3,
++      weightedCoverageRatio: 1
++    });
++  });
++
++  it("excludes the target commune from its own neighborhood", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("95584", 0, 100),
++      neighbor("01001", 0, 20),
++      neighbor("01002", 0, 20),
++      neighbor("01003", 0, 20)
++    ]);
++
++    expect(summary.value).toBe(20);
++    expect(summary.scoredNeighborCount).toBe(3);
++    expect(summary.totalNeighborCount).toBe(3);
++  });
++
++  it("keeps neighbors without an index in the weighted coverage denominator", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("01001", 0, 40),
++      neighbor("01002", 0, 40),
++      neighbor("01003", 0, 40),
++      neighbor("01004", 0, null)
++    ]);
++
++    expect(summary.value).toBe(40);
++    expect(summary.scoredNeighborCount).toBe(3);
++    expect(summary.totalNeighborCount).toBe(4);
++    expect(summary.weightedCoverageRatio).toBe(0.75);
++  });
++
++  it("does not expose a value with fewer than three scored neighbors", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("01001", 0, 20),
++      neighbor("01002", 12.5, 80)
++    ]);
++
++    expect(summary.value).toBeNull();
++    expect(summary.status).toBe("insufficient-coverage");
++    expect(summary.scoredNeighborCount).toBe(2);
++  });
++
++  it("accepts exactly 50 percent weighted coverage", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("01001", 0, 20),
++      neighbor("01002", 0, 40),
++      neighbor("01003", 0, 60),
++      neighbor("01004", 0, null),
++      neighbor("01005", 0, null),
++      neighbor("01006", 0, null)
++    ]);
++
++    expect(summary.value).toBe(40);
++    expect(summary.status).toBe("comparable");
++    expect(summary.weightedCoverageRatio).toBe(0.5);
++  });
++
++  it("reports insufficient coverage below 50 percent", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("01001", 0, 20),
++      neighbor("01002", 0, 40),
++      neighbor("01003", 0, 60),
++      neighbor("01004", 0, null),
++      neighbor("01005", 0, null),
++      neighbor("01006", 0, null),
++      neighbor("01007", 0, null)
++    ]);
++
++    expect(summary.value).toBeNull();
++    expect(summary.status).toBe("insufficient-coverage");
++    expect(summary.weightedCoverageRatio).toBeLessThan(0.5);
++  });
++
++  it("uses a weight of one at zero distance", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("01001", 0, 20),
++      neighbor("01002", 12.5, 80),
++      neighbor("01003", 10, 40)
++    ]);
++
++    expect(summary.value).toBe(40);
++  });
++
++  it("excludes neighbors exactly on the radius boundary", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
++      neighbor("01001", 0, 50),
++      neighbor("01002", 10, 50),
++      neighbor("01003", 20, 50),
++      neighbor("01004", 25, null)
++    ]);
++
++    expect(summary.totalNeighborCount).toBe(3);
++    expect(summary.weightedCoverageRatio).toBe(1);
++  });
++
++  it("reports unavailable coordinates without manufacturing a score", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, false, []);
++
++    expect(summary).toEqual({
++      radiusKm: 25,
++      value: null,
++      status: "coordinates-unavailable",
++      scoredNeighborCount: 0,
++      totalNeighborCount: 0,
++      weightedCoverageRatio: null
++    });
++  });
++
++  it("reports a geolocated target with no neighbors separately", () => {
++    const summary = summarizeEnvironmentalRisk("95584", 25, true, []);
++
++    expect(summary.status).toBe("no-neighbors");
++    expect(summary.value).toBeNull();
++    expect(summary.weightedCoverageRatio).toBeNull();
++  });
++});
++
++describe("environmental risk queries", () => {
++  it("defines the four supported radii", () => {
++    expect(ENVIRONMENTAL_RADII_KM).toEqual([25, 50, 100, 200]);
++  });
++
++  it("queries one city's neighbors with its requested year and snapshot", () => {
++    const query = buildCityEnvironmentalRiskQuery("95584", 2025, "42");
++
++    expect(query.values).toEqual(["95584", 2025, "42"]);
++    expect(query.text).toContain("st_dwithin");
++    expect(query.text).toContain("200");
++    expect(query.text).toContain("c.insee_code <> target.insee_code");
++    expect(query.text).toContain("metrics.year = $2");
++    expect(query.text).toContain("metrics.snapshot_id = $3");
++    expect(query.text).toContain("left join search_metrics_city_year_comparative");
++    expect(query.text).toMatch(/st_distance[\s\S]*<|<[^\n]*st_distance/i);
++  });
++
++  it("queries map targets in a batch and retains neighbors with missing indices", () => {
++    const query = buildMapEnvironmentalRiskQuery(["95584", "95313"], 2025, "42", 50);
++
++    expect(query.values).toEqual([["95584", "95313"], 2025, "42", 50000]);
++    expect(query.text).toContain("unnest($1::varchar[])");
++    expect(query.text).toContain("metrics.year = $2");
++    expect(query.text).toContain("metrics.snapshot_id = $3");
++    expect(query.text).toContain("st_dwithin");
++    expect(query.text).toContain("c.insee_code <> targets.insee_code");
++    expect(query.text).toContain("left join search_metrics_city_year_comparative");
++    expect(query.text).toContain("< $4");
++  });
++});
+

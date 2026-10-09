@@ -1,0 +1,379 @@
+### src\server\nearby-city-search.ts
+warning: in the working copy of '.superpowers\sdd\2026-10-09-environmental-risk\task-3-before\src\server\nearby-city-search.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src\server\nearby-city-search.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-3-before\\src\\server\\nearby-city-search.ts" "b/src\\server\\nearby-city-search.ts"
+index 23e45b8..9cdc1a3 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-3-before\\src\\server\\nearby-city-search.ts"
++++ "b/src\\server\\nearby-city-search.ts"
+@@ -11,11 +11,20 @@ import {
+   type PublishedMetrics,
+   type PublishedMetricsColumns
+ } from "@/server/comparative-index";
++import {
++  ENVIRONMENTAL_RADII_KM,
++  buildMapEnvironmentalRiskQuery,
++  summarizeEnvironmentalRisk,
++  type EnvironmentalNeighborRow,
++  type EnvironmentalRadiusKm,
++  type EnvironmentalRiskSummary
++} from "@/server/environmental-risk";
+ 
+ export type NearbyCitySearchParams = {
+   originInseeCode: string;
+   year: number;
+-  radiusKm: 25 | 50 | 100 | 200;
++  radiusKm: EnvironmentalRadiusKm;
++  environmentalRadiusKm?: EnvironmentalRadiusKm;
+   populationMin?: number;
+   populationMax?: number;
+   comparativeIndexMin?: number;
+@@ -84,6 +93,12 @@ const nearbySearchSchema = z.object({
+     .number()
+     .refine((value): value is 25 | 50 | 100 | 200 => [25, 50, 100, 200].includes(value))
+     .default(50),
++  environmentalRadiusKm: z.coerce
++    .number()
++    .refine((value): value is EnvironmentalRadiusKm =>
++      ENVIRONMENTAL_RADII_KM.includes(value as EnvironmentalRadiusKm)
++    )
++    .optional(),
+   populationMin: z.coerce.number().int().min(0).optional(),
+   populationMax: z.coerce.number().int().min(0).optional(),
+   comparativeIndexMin: z.coerce.number().int().min(0).max(100).optional(),
+@@ -392,6 +407,7 @@ paged_nearby as (
+ )
+ select
+   origin_status.origin_exists,
++  (select snapshot_id from active_snapshot limit 1) as snapshot_id,
+   paged_nearby.*,
+   filtered_count.total_count,
+   case when row_number() over (
+@@ -409,12 +425,13 @@ order by paged_nearby.distance_km nulls last, paged_nearby.name nulls last
+ type Queryable = {
+   query<T extends QueryResultRow>(
+     text: string,
+-    values: Array<string | number>
++    values: Array<string | number | string[]>
+   ): Promise<QueryResult<T>>;
+ };
+ 
+ type RawNearbyCityRow = {
+   origin_exists: boolean;
++  snapshot_id: string | null;
+   insee_code: string | null;
+   name: string;
+   department_code: string;
+@@ -446,6 +463,14 @@ type RawNearbyCityRow = {
+   map_points: NearbyMapPoint[] | null;
+ } & ComparativeIndexColumns & PublishedMetricsColumns;
+ 
++type RawMapEnvironmentalRiskRow = {
++  target_insee_code: string;
++  target_coordinates_available: boolean | null;
++  neighbor_insee_code: string | null;
++  distance_km: string | null;
++  comparative_index: string | number | null;
++};
++
+ export async function searchNearbyCities(
+   db: Queryable,
+   params: NearbyCitySearchParams
+@@ -458,10 +483,69 @@ export async function searchNearbyCities(
+ 
+   const rows = result.rows.filter((row) => row.insee_code !== null);
+   const mapPoints = result.rows.find((row) => row.map_points !== null)?.map_points ?? [];
++  const environmentalRiskByCode = new Map<string, EnvironmentalRiskSummary>();
++
++  if (params.environmentalRadiusKm !== undefined && mapPoints.length > 0) {
++    const snapshotId = result.rows[0]?.snapshot_id;
++    if (snapshotId) {
++      const inseeCodes = [...new Set(mapPoints.map((point) => point.inseeCode))];
++      const environmentalQuery = buildMapEnvironmentalRiskQuery(
++        inseeCodes,
++        params.year,
++        snapshotId,
++        params.environmentalRadiusKm
++      );
++      const environmentalResult = await db.query<RawMapEnvironmentalRiskRow>(
++        environmentalQuery.text,
++        environmentalQuery.values
++      );
++      const groupedRows = new Map<string, {
++        coordinatesAvailable: boolean;
++        neighbors: EnvironmentalNeighborRow[];
++      }>();
++
++      for (const row of environmentalResult.rows) {
++        let group = groupedRows.get(row.target_insee_code);
++        if (!group) {
++          group = {
++            coordinatesAvailable: row.target_coordinates_available === true,
++            neighbors: []
++          };
++          groupedRows.set(row.target_insee_code, group);
++        }
++
++        if (row.neighbor_insee_code === null || row.distance_km === null) continue;
++        group.neighbors.push({
++          targetInseeCode: row.target_insee_code,
++          neighborInseeCode: row.neighbor_insee_code,
++          distanceKm: Number(row.distance_km),
++          comparativeIndex:
++            row.comparative_index === null ? null : Number(row.comparative_index)
++        });
++      }
++
++      for (const [targetCode, group] of groupedRows) {
++        environmentalRiskByCode.set(
++          targetCode,
++          summarizeEnvironmentalRisk(
++            targetCode,
++            params.environmentalRadiusKm,
++            group.coordinatesAvailable,
++            group.neighbors
++          )
++        );
++      }
++    }
++  }
++
++  const enrichedMapPoints = mapPoints.map((point) => ({
++    ...point,
++    environmentalRisk: environmentalRiskByCode.get(point.inseeCode) ?? null
++  }));
+ 
+   return {
+     totalCount: result.rows.length === 0 ? 0 : result.rows[0].total_count,
+-    mapPoints,
++    mapPoints: enrichedMapPoints,
+     results: rows.map((row) => ({
+       inseeCode: row.insee_code as string,
+       name: row.name,
+
+### src\server\environmental-risk.ts
+warning: in the working copy of '.superpowers\sdd\2026-10-09-environmental-risk\task-3-before\src\server\environmental-risk.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src\server\environmental-risk.ts', LF will be replaced by CRLF the next time Git touches it
+
+### src\client\nearby-map-ui.ts
+warning: in the working copy of '.superpowers\sdd\2026-10-09-environmental-risk\task-3-before\src\client\nearby-map-ui.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src\client\nearby-map-ui.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-3-before\\src\\client\\nearby-map-ui.ts" "b/src\\client\\nearby-map-ui.ts"
+index 2692760..090e26a 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-3-before\\src\\client\\nearby-map-ui.ts"
++++ "b/src\\client\\nearby-map-ui.ts"
+@@ -1,4 +1,5 @@
+ import { getPercentileBand } from "@/client/city-search-ui";
++import type { EnvironmentalRiskSummary } from "@/server/environmental-risk";
+ 
+ export type NearbyMapCriterion = "comparativeIndex" | "categoryRate";
+ 
+@@ -21,6 +22,7 @@ export type NearbyMapPoint = {
+   categoryPopulationDenominatorYear: number | null;
+   categoryHousingDenominatorYear: number | null;
+   categoryPublicationStatus: "published" | "masked" | "unknown" | null;
++  environmentalRisk?: EnvironmentalRiskSummary | null;
+ };
+ 
+ const MAP_BAND_COLORS: Record<string, string> = {
+
+### tests\nearby-city-search.test.ts
+warning: in the working copy of '.superpowers\sdd\2026-10-09-environmental-risk\task-3-before\tests\nearby-city-search.test.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests\nearby-city-search.test.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-3-before\\tests\\nearby-city-search.test.ts" "b/tests\\nearby-city-search.test.ts"
+index 5cd056b..cd4a2e3 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-3-before\\tests\\nearby-city-search.test.ts"
++++ "b/tests\\nearby-city-search.test.ts"
+@@ -14,6 +14,13 @@ const params = parseNearbyCitySearchParams("95594", new URLSearchParams({
+ }));
+ 
+ describe("nearby city search", () => {
++  it("rejects environmental radii outside the supported set", () => {
++    expect(() => parseNearbyCitySearchParams("95594", new URLSearchParams({
++      year: "2025",
++      environmentalRadiusKm: "30"
++    }))).toThrow();
++  });
++
+   it("excludes unknown populations when a population bound is active", () => {
+     const query = buildNearbyCitySearchQuery({
+       ...params,
+@@ -68,8 +75,135 @@ describe("nearby city search", () => {
+     await expect(searchNearbyCities(db as never, params)).resolves.toEqual({
+       totalCount: 237,
+       results: [],
+-      mapPoints: [mapPoint]
++      mapPoints: [{ ...mapPoint, environmentalRisk: null }]
++    });
++    expect(db.query).toHaveBeenCalledTimes(1);
++  });
++
++  it("batches environmental summaries for unique map points using the active snapshot", async () => {
++    const environmentalParams = parseNearbyCitySearchParams("95594", new URLSearchParams({
++      year: "2025",
++      radiusKm: "25",
++      environmentalRadiusKm: "25",
++      populationMin: "1000",
++      comparativeIndexMax: "80",
++      categoryCode: "ssmsi-cambriolages",
++      categoryIncidentMin: "1",
++      mapCategoryCode: "ssmsi-cambriolages",
++      limit: "10",
++      offset: "1000"
++    }));
++    const mapPoints = [
++      makeMapPoint("95584"),
++      makeMapPoint("95584"),
++      makeMapPoint("95313")
++    ];
++    const db = {
++      query: vi.fn()
++        .mockResolvedValueOnce({
++          rows: [{
++            origin_exists: true,
++            snapshot_id: "snapshot-17",
++            insee_code: null,
++            total_count: 0,
++            map_points: mapPoints
++          }],
++          rowCount: 1
++        })
++        .mockResolvedValueOnce({
++          rows: [
++            environmentalRow("95584", "01001", "0", "20"),
++            environmentalRow("95584", "01002", "12.5", "80"),
++            environmentalRow("95584", "01003", "10", "40"),
++            environmentalRow("95584", "01004", "2", null),
++            environmentalRow("95313", "01005", "0", "30"),
++            environmentalRow("95313", "01006", "0", "50"),
++            environmentalRow("95313", "01007", "0", "70")
++          ],
++          rowCount: 7
++        })
++    };
++
++    const result = await searchNearbyCities(db as never, environmentalParams);
++
++    expect(db.query).toHaveBeenCalledTimes(2);
++    const [batchSql, batchValues] = db.query.mock.calls[1];
++    expect(batchValues).toEqual([["95584", "95313"], 2025, "snapshot-17", 25000]);
++    expect(batchSql).toContain("unnest($1::varchar[])");
++    expect(batchSql).toContain("metrics.year = $2");
++    expect(batchSql).toContain("metrics.snapshot_id = $3");
++    expect(batchSql).toContain("st_dwithin");
++    expect(batchSql).not.toContain("population_min");
++    expect(batchSql).not.toContain("limit 10");
++    expect(result.results).toEqual([]);
++    expect(result.mapPoints[0].environmentalRisk).toMatchObject({
++      radiusKm: 25,
++      value: 40,
++      status: "comparable",
++      scoredNeighborCount: 3,
++      totalNeighborCount: 4
++    });
++    expect(result.mapPoints[0].environmentalRisk?.weightedCoverageRatio).toBeCloseTo(
++      2.1 / 3.02
++    );
++    expect(result.mapPoints[1].environmentalRisk).toEqual(
++      result.mapPoints[0].environmentalRisk
++    );
++    expect(result.mapPoints[2].environmentalRisk).toMatchObject({
++      value: 50,
++      status: "comparable",
++      scoredNeighborCount: 3,
++      totalNeighborCount: 3,
++      weightedCoverageRatio: 1
++    });
++  });
++
++  it("does not run the environmental batch when there are no map points", async () => {
++    const environmentalParams = parseNearbyCitySearchParams("95594", new URLSearchParams({
++      year: "2025",
++      environmentalRadiusKm: "50"
++    }));
++    const db = {
++      query: vi.fn().mockResolvedValue({
++        rows: [{
++          origin_exists: true,
++          snapshot_id: "snapshot-17",
++          insee_code: null,
++          total_count: 0,
++          map_points: []
++        }],
++        rowCount: 1
++      })
++    };
++
++    await expect(searchNearbyCities(db as never, environmentalParams)).resolves.toMatchObject({
++      mapPoints: []
+     });
++    expect(db.query).toHaveBeenCalledTimes(1);
++  });
++
++  it("does not guess a snapshot when environmental mode has no active snapshot", async () => {
++    const environmentalParams = parseNearbyCitySearchParams("95594", new URLSearchParams({
++      year: "2025",
++      environmentalRadiusKm: "50"
++    }));
++    const db = {
++      query: vi.fn().mockResolvedValue({
++        rows: [{
++          origin_exists: true,
++          snapshot_id: null,
++          insee_code: null,
++          total_count: 0,
++          map_points: [makeMapPoint("95584")]
++        }],
++        rowCount: 1
++      })
++    };
++
++    const result = await searchNearbyCities(db as never, environmentalParams);
++
++    expect(db.query).toHaveBeenCalledTimes(1);
++    expect(result.mapPoints[0].environmentalRisk).toBeNull();
+   });
+ 
+   it("ranks a map category only against published values with the same comparison base", () => {
+@@ -124,3 +258,41 @@ describe("nearby city search", () => {
+     );
+   });
+ });
++
++function makeMapPoint(inseeCode: string) {
++  return {
++    inseeCode,
++    name: "Seugy",
++    latitude: 49.121,
++    longitude: 2.391,
++    distanceKm: 12.5,
++    population: 1044,
++    populationYear: 2023,
++    comparativeIndex: 82,
++    comparativeIndexStatus: "comparable",
++    comparativeIndexCompleteness: "high",
++    categoryLabel: null,
++    categoryRatePer1000: null,
++    categoryPercentile: null,
++    categoryCountUnit: null,
++    categoryRateDenominator: "unknown",
++    categoryPopulationDenominatorYear: null,
++    categoryHousingDenominatorYear: null,
++    categoryPublicationStatus: null
++  };
++}
++
++function environmentalRow(
++  targetInseeCode: string,
++  neighborInseeCode: string,
++  distanceKm: string,
++  comparativeIndex: string | null
++) {
++  return {
++    target_insee_code: targetInseeCode,
++    target_coordinates_available: true,
++    neighbor_insee_code: neighborInseeCode,
++    distance_km: distanceKm,
++    comparative_index: comparativeIndex
++  };
++}
+

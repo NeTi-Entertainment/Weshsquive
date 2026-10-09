@@ -1,0 +1,347 @@
+### app\communes\[inseeCode]\page.tsx
+warning: in the working copy of '.superpowers\sdd\2026-10-09-environmental-risk\task-2-before\app\communes\[inseeCode]\page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app\communes\[inseeCode]\page.tsx', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\app\\communes\\[inseeCode]\\page.tsx" "b/app\\communes\\[inseeCode]\\page.tsx"
+index ca807b4..de9bea9 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\app\\communes\\[inseeCode]\\page.tsx"
++++ "b/app\\communes\\[inseeCode]\\page.tsx"
+@@ -21,6 +21,7 @@ import {
+ } from "@/server/city-detail";
+ import { pool } from "@/server/db";
+ 
++import EnvironmentalRiskSection from "../../environmental-risk-section";
+ import NearbyCitiesPanel from "../../nearby-cities-panel";
+ 
+ type CityDetailPageProps = {
+@@ -146,6 +147,8 @@ export default async function CityDetailPage({ params, searchParams }: CityDetai
+         </article>
+       </section>
+ 
++      <EnvironmentalRiskSection summaries={city.environmentalRisk} />
++
+       <section className="history-section" aria-labelledby="history-title">
+         <div className="history-heading">
+           <div>
+
+### app\globals.css
+warning: in the working copy of '.superpowers\sdd\2026-10-09-environmental-risk\task-2-before\app\globals.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app\globals.css', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\app\\globals.css" "b/app\\globals.css"
+index 30237d5..afdce47 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\app\\globals.css"
++++ "b/app\\globals.css"
+@@ -572,6 +572,102 @@ tbody tr:hover {
+   align-content: start;
+ }
+ 
++.environmental-risk-section {
++  margin: 0 28px 20px;
++  border-top: 3px solid #2e7182;
++  background: #ffffff;
++}
++
++.environmental-risk-heading {
++  border-right: 1px solid #d3dce6;
++  border-left: 1px solid #d3dce6;
++  padding: 16px 18px 14px;
++}
++
++.environmental-risk-heading h2 {
++  margin: 0;
++  font-size: 17px;
++}
++
++.environmental-risk-table-frame {
++  width: 100%;
++  overflow-x: auto;
++  border: 1px solid #d3dce6;
++  box-sizing: border-box;
++}
++
++.environmental-risk-table {
++  width: 100%;
++  min-width: 620px;
++  border-collapse: collapse;
++  font-size: 13px;
++}
++
++.environmental-risk-table th,
++.environmental-risk-table td {
++  border-bottom: 1px solid #e4e9ef;
++  padding: 11px 14px;
++  text-align: left;
++}
++
++.environmental-risk-table thead th {
++  background: #f5f8fa;
++  color: #526477;
++  font-size: 12px;
++  font-weight: 700;
++}
++
++.environmental-risk-table tbody tr:last-child th,
++.environmental-risk-table tbody tr:last-child td {
++  border-bottom: 0;
++}
++
++.environmental-risk-table tbody th {
++  white-space: nowrap;
++}
++
++.environmental-risk-table td:nth-child(n + 3) {
++  font-variant-numeric: tabular-nums;
++  white-space: nowrap;
++}
++
++.environmental-risk-value-cell {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  min-height: 26px;
++}
++
++.environmental-risk-score {
++  display: inline-block;
++  min-width: 86px;
++  border-radius: 3px;
++  padding: 5px 7px;
++  font-variant-numeric: tabular-nums;
++}
++
++.environmental-risk-table td > small {
++  display: block;
++  margin-top: 4px;
++  color: #687789;
++  font-size: 11px;
++}
++
++.environmental-risk-scale {
++  color: #687789;
++  font-size: 11px;
++}
++
++.environmental-risk-note {
++  margin: 0;
++  border-right: 1px solid #d3dce6;
++  border-left: 1px solid #d3dce6;
++  padding: 12px 14px;
++  color: #687789;
++  font-size: 12px;
++  line-height: 1.5;
++}
++
+ .history-section {
+   margin: 0 28px 20px;
+   border-top: 3px solid #2e7182;
+@@ -1127,6 +1223,11 @@ tbody tr:hover {
+     margin-left: 14px;
+   }
+ 
++  .environmental-risk-section {
++    margin-right: 14px;
++    margin-left: 14px;
++  }
++
+   .nearby-section {
+     margin-right: 14px;
+     margin-left: 14px;
+
+### app\environmental-risk-section.tsx
+warning: in the working copy of 'app\environmental-risk-section.tsx', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\app\\environmental-risk-section.tsx" "b/app\\environmental-risk-section.tsx"
+index e69de29..866a96c 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\app\\environmental-risk-section.tsx"
++++ "b/app\\environmental-risk-section.tsx"
+@@ -0,0 +1,60 @@
++import { getComparativeIndexClassName } from "@/client/city-search-ui";
++import {
++  formatEnvironmentalRiskCoverage,
++  formatEnvironmentalRiskStatus,
++  formatEnvironmentalRiskValue
++} from "@/client/environmental-risk-ui";
++import type { EnvironmentalRiskSummary } from "@/server/environmental-risk";
++
++type EnvironmentalRiskSectionProps = {
++  summaries: EnvironmentalRiskSummary[];
++};
++
++export default function EnvironmentalRiskSection({ summaries }: EnvironmentalRiskSectionProps) {
++  return (
++    <section className="environmental-risk-section" aria-labelledby="environmental-risk-title">
++      <div className="environmental-risk-heading">
++        <h2 id="environmental-risk-title">Environnement statistique</h2>
++      </div>
++      <div className="environmental-risk-table-frame">
++        <table className="environmental-risk-table">
++          <thead>
++            <tr>
++              <th scope="col">Rayon</th>
++              <th scope="col">Indice environnemental</th>
++              <th scope="col">Voisines avec indice / total</th>
++              <th scope="col">Couverture pondérée</th>
++            </tr>
++          </thead>
++          <tbody>
++            {summaries.map((summary) => (
++              <tr key={summary.radiusKm}>
++                <th scope="row">{summary.radiusKm} km</th>
++                <td>
++                  <div className="environmental-risk-value-cell">
++                    <strong
++                      className={`environmental-risk-score${summary.value === null ? "" : ` ${getComparativeIndexClassName(summary.value)}`}`}
++                    >
++                      {formatEnvironmentalRiskValue(summary.value)}
++                    </strong>
++                    {summary.value !== null && <span className="environmental-risk-scale">/ 100</span>}
++                  </div>
++                  <small>{formatEnvironmentalRiskStatus(summary.status)}</small>
++                </td>
++                <td aria-label={`${summary.scoredNeighborCount} communes avec indice sur ${summary.totalNeighborCount} communes voisines`}>
++                  {summary.scoredNeighborCount} / {summary.totalNeighborCount}
++                </td>
++                <td>{formatEnvironmentalRiskCoverage(summary.weightedCoverageRatio)}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++      <p className="environmental-risk-note">
++        Cette moyenne, calculée par l’application à partir des indices comparatifs des communes voisines et pondérée par la distance,
++        décrit une exposition statistique relative. Ce n’est ni une statistique officielle du SSMSI, ni un percentile environnemental,
++        ni une probabilité individuelle ou une garantie de sécurité.
++      </p>
++    </section>
++  );
++}
+
+### src\client\environmental-risk-ui.ts
+warning: in the working copy of 'src\client\environmental-risk-ui.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\src\\client\\environmental-risk-ui.ts" "b/src\\client\\environmental-risk-ui.ts"
+index e69de29..dc08830 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\src\\client\\environmental-risk-ui.ts"
++++ "b/src\\client\\environmental-risk-ui.ts"
+@@ -0,0 +1,32 @@
++import type { EnvironmentalRiskStatus } from "@/server/environmental-risk";
++
++export function formatEnvironmentalRiskValue(value: number | null): string {
++  if (value === null) return "Non disponible";
++
++  return new Intl.NumberFormat("fr-FR", {
++    minimumFractionDigits: 1,
++    maximumFractionDigits: 1
++  }).format(value);
++}
++
++export function formatEnvironmentalRiskStatus(status: EnvironmentalRiskStatus): string {
++  switch (status) {
++    case "comparable":
++      return "Indice calculé";
++    case "insufficient-coverage":
++      return "Couverture insuffisante";
++    case "no-neighbors":
++      return "Aucune commune dans ce rayon";
++    case "coordinates-unavailable":
++      return "Coordonnées indisponibles";
++  }
++}
++
++export function formatEnvironmentalRiskCoverage(ratio: number | null): string {
++  if (ratio === null) return "Non renseignée";
++
++  return new Intl.NumberFormat("fr-FR", {
++    style: "percent",
++    maximumFractionDigits: 0
++  }).format(ratio);
++}
+
+### tests\environmental-risk-ui.test.ts
+warning: in the working copy of 'tests\environmental-risk-ui.test.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\tests\\environmental-risk-ui.test.ts" "b/tests\\environmental-risk-ui.test.ts"
+index e69de29..7eeb8d6 100644
+--- "a/.superpowers\\sdd\\2026-10-09-environmental-risk\\task-2-before\\tests\\environmental-risk-ui.test.ts"
++++ "b/tests\\environmental-risk-ui.test.ts"
+@@ -0,0 +1,83 @@
++import { describe, expect, it } from "vitest";
++import { createElement } from "react";
++import { renderToStaticMarkup } from "react-dom/server";
++
++import EnvironmentalRiskSection from "../app/environmental-risk-section";
++import { getComparativeIndexClassName } from "../src/client/city-search-ui";
++import {
++  formatEnvironmentalRiskCoverage,
++  formatEnvironmentalRiskStatus,
++  formatEnvironmentalRiskValue
++} from "../src/client/environmental-risk-ui";
++import type { EnvironmentalRiskSummary } from "../src/server/environmental-risk";
++
++describe("environmental risk UI formatters", () => {
++  it("formats scores with French decimal notation and preserves missing values", () => {
++    expect(formatEnvironmentalRiskValue(42.5)).toBe("42,5");
++    expect(formatEnvironmentalRiskValue(null)).toBe("Non disponible");
++    expect(getComparativeIndexClassName(null)).not.toMatch(/stat-band-/);
++  });
++
++  it("formats weighted coverage as a whole French percentage", () => {
++    expect(formatEnvironmentalRiskCoverage(0.52)).toBe("52 %");
++    expect(formatEnvironmentalRiskCoverage(null)).toBe("Non renseignée");
++  });
++
++  it("provides an explicit French label for every environmental status", () => {
++    expect(formatEnvironmentalRiskStatus("comparable")).toBe("Indice calculé");
++    expect(formatEnvironmentalRiskStatus("insufficient-coverage")).toBe("Couverture insuffisante");
++    expect(formatEnvironmentalRiskStatus("no-neighbors")).toBe("Aucune commune dans ce rayon");
++    expect(formatEnvironmentalRiskStatus("coordinates-unavailable")).toBe("Coordonnées indisponibles");
++  });
++
++  it("renders each radius and keeps unavailable scores uncolored", () => {
++    const summaries: EnvironmentalRiskSummary[] = [
++      {
++        radiusKm: 25,
++        value: 42.5,
++        status: "comparable",
++        scoredNeighborCount: 4,
++        totalNeighborCount: 10,
++        weightedCoverageRatio: 0.52
++      },
++      {
++        radiusKm: 50,
++        value: null,
++        status: "insufficient-coverage",
++        scoredNeighborCount: 2,
++        totalNeighborCount: 5,
++        weightedCoverageRatio: 0.4
++      },
++      {
++        radiusKm: 100,
++        value: null,
++        status: "no-neighbors",
++        scoredNeighborCount: 0,
++        totalNeighborCount: 0,
++        weightedCoverageRatio: null
++      },
++      {
++        radiusKm: 200,
++        value: null,
++        status: "coordinates-unavailable",
++        scoredNeighborCount: 0,
++        totalNeighborCount: 0,
++        weightedCoverageRatio: null
++      }
++    ];
++    const markup = renderToStaticMarkup(createElement(EnvironmentalRiskSection, { summaries }));
++
++    expect(markup).toContain("Environnement statistique");
++    expect(markup.match(/<tr>/g)).toHaveLength(5);
++    expect(markup).toContain("25 km");
++    expect(markup).toContain("50 km");
++    expect(markup).toContain("100 km");
++    expect(markup).toContain("200 km");
++    expect(markup).toContain("4 / 10");
++    expect(markup).toContain("52 %");
++    expect(markup).toContain("Non disponible");
++    const unavailableScoreRow = markup.split("<th scope=\"row\">50 km</th>")[1]?.split("</tr>")[0] ?? "";
++    expect(unavailableScoreRow).toContain("environmental-risk-score");
++    expect(unavailableScoreRow).not.toMatch(/stat-band-/);
++  });
++});
+
