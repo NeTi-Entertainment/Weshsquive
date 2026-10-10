@@ -268,17 +268,22 @@ map_category_percentiles as (
    and map_category.year = $2
    and map_category.category_code = ${mapCategoryPlaceholder}
   left join map_category_percentiles map_percentile
-    on map_percentile.city_insee_code = c.insee_code`
+    on map_percentile.city_insee_code = c.insee_code
+  left join exposure_index_category_anchors map_anchor
+    on map_anchor.category_code = map_category.category_code`
     : `left join lateral (
     select
+      null::text as category_code,
       null::text as category_label,
       null::numeric as rate_per_1000,
       null::text as publication_status,
       null::text as count_unit,
       'unknown'::text as rate_denominator,
       null::smallint as insee_pop_millesime,
-      null::smallint as insee_log_millesime
+      null::smallint as insee_log_millesime,
+      null::numeric as category_exposure_score
   ) map_category on true
+  left join lateral (select null::text as category_code) map_anchor on true
   left join lateral (
     select null::numeric as map_category_percentile
   ) map_percentile on true`;
@@ -319,23 +324,16 @@ nearby_metrics as (
     coalesce(metrics.total_category_count, 0) as total_category_count,
     metrics.coverage_ratio,
     metrics.comparative_index,
-    coalesce(
-      metrics.comparative_index_status,
-      case
-        when metrics.population is null or metrics.population <= 0
-          then 'population-unavailable'
-        else 'insufficient-coverage'
-      end
-    ) as comparative_index_status,
+    coalesce(metrics.comparative_index_status, 'unavailable') as comparative_index_status,
     metrics.availability_mask,
     coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
     metrics.basket_version,
     coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
     coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
-    coalesce(metrics.comparable_basket_category_count, 0) as comparable_basket_category_count,
-    coalesce(metrics.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
+    coalesce(metrics.effective_basket_category_count, 0) as effective_basket_category_count,
+    metrics.basket_index_coverage,
+    coalesce(metrics.low_volume_cap_applied, false) as low_volume_cap_applied,
     coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
-    metrics.population_band,
     selected_category.selected_category_label,
     selected_category.selected_category_incident_count,
     selected_category.selected_category_rate_per_1000,
@@ -353,7 +351,11 @@ nearby_metrics as (
     map_category.rate_denominator as map_category_rate_denominator,
     map_category.insee_pop_millesime as map_category_population_denominator_year,
     map_category.insee_log_millesime as map_category_housing_denominator_year,
-    map_percentile.map_category_percentile
+    map_percentile.map_category_percentile,
+    map_category.category_exposure_score as map_category_exposure_score,
+    case when map_anchor.category_code is not null then 'absolute-exposure'
+         when map_category.category_code is not null then 'percentile'
+         else null end as map_category_color_mode
   from origin_city
   cross join active_snapshot
   join cities c
@@ -392,15 +394,17 @@ map_points as (
     'basket_version', basket_version,
     'published_basket_category_count', published_basket_category_count,
     'estimated_basket_category_count', estimated_basket_category_count,
-    'comparable_basket_category_count', comparable_basket_category_count,
+    'effective_basket_category_count', effective_basket_category_count,
+    'basket_index_coverage', basket_index_coverage,
+    'low_volume_cap_applied', low_volume_cap_applied,
     'availability_mask', availability_mask,
     'estimated_availability_mask', estimated_availability_mask,
-    'minimum_reference_cohort_size', minimum_reference_cohort_size,
     'comparative_index_provenance', comparative_index_provenance,
-    'population_band', population_band,
     'categoryLabel', map_category_label,
     'categoryRatePer1000', map_category_rate_per_1000,
     'categoryPercentile', map_category_percentile,
+    'categoryExposureScore', map_category_exposure_score,
+    'categoryColorMode', map_category_color_mode,
     'categoryCountUnit', map_category_count_unit,
     'categoryRateDenominator', map_category_rate_denominator,
     'categoryPopulationDenominatorYear', map_category_population_denominator_year,
@@ -571,7 +575,7 @@ export async function searchNearbyCities(
       population: row.population,
       populationYear: row.population_year,
       published: mapPublishedMetrics(row),
-      comparativeIndex: mapComparativeIndex(row, row.population),
+      comparativeIndex: mapComparativeIndex(row),
       selectedCategory:
         params.categoryCode && row.selected_category_label && row.selected_category_publication_status
           ? {
@@ -607,10 +611,12 @@ function mapNearbyMapPoint(row: RawNearbyMapPoint): NearbyMapPoint {
     distanceKm: row.distanceKm,
     population: row.population,
     populationYear: row.populationYear,
-    comparativeIndex: mapComparativeIndex(row, row.population),
+    comparativeIndex: mapComparativeIndex(row),
     categoryLabel: row.categoryLabel,
     categoryRatePer1000: row.categoryRatePer1000,
     categoryPercentile: row.categoryPercentile,
+    categoryExposureScore: row.categoryExposureScore,
+    categoryColorMode: row.categoryColorMode,
     categoryCountUnit: row.categoryCountUnit,
     categoryRateDenominator: row.categoryRateDenominator,
     categoryPopulationDenominatorYear: row.categoryPopulationDenominatorYear,

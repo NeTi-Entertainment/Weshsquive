@@ -23,9 +23,10 @@ describe("city detail queries", () => {
     expect(query.text).toContain("rate_denominator");
     expect(query.text).toContain("category_code");
     expect(query.text).toContain("tm.estimated_basket_category_count");
-    expect(query.text).toContain("tm.comparable_basket_category_count");
+    expect(query.text).toContain("tm.effective_basket_category_count");
+    expect(query.text).toContain("tm.basket_index_coverage");
+    expect(query.text).toContain("tm.low_volume_cap_applied");
     expect(query.text).toContain("tm.estimated_availability_mask");
-    expect(query.text).toContain("tm.minimum_reference_cohort_size");
     expect(query.text).toContain("tm.comparative_index_provenance");
     expect(query.text).toContain("tm.basket_version");
     expect(query.text).not.toContain("coalesce(tm.basket_version");
@@ -86,16 +87,16 @@ describe("city detail queries", () => {
               total_category_count: 1,
               coverage_ratio: "1",
               comparative_index: null,
-              comparative_index_status: "insufficient-coverage",
-              basket_version: "residential-risk-v2",
+              comparative_index_status: "unavailable",
+              basket_version: "absolute-exposure-v1",
               published_basket_category_count: 0,
-              estimated_basket_category_count: 2,
-              comparable_basket_category_count: 2,
+              estimated_basket_category_count: 0,
+              effective_basket_category_count: 0,
+              basket_index_coverage: "0",
+              low_volume_cap_applied: false,
               availability_mask: 0,
-              estimated_availability_mask: 3,
-              minimum_reference_cohort_size: 0,
+              estimated_availability_mask: 0,
               comparative_index_provenance: "unavailable",
-              population_band: "1000-4999",
               categories: [{
                 code: "ssmsi-example",
                 label: "Exemple masqué",
@@ -150,12 +151,14 @@ describe("city detail queries", () => {
       [200, "coordinates-unavailable"]
     ]);
     expect(detail?.comparativeIndex).toMatchObject({
-      basketVersion: "residential-risk-v2",
+      basketVersion: "absolute-exposure-v1",
+      status: "unavailable",
       provenance: "unavailable",
       publishedComponentCount: 0,
-      estimatedComponentCount: 2,
-      comparableComponentCount: 2,
-      minimumReferenceCohortSize: 0
+      estimatedComponentCount: 0,
+      availableComponentCount: 0,
+      coverageRatio: 0,
+      lowVolumeCapApplied: false
     });
     expect(detail?.categories[0]).toMatchObject({
       publicationStatus: "masked",

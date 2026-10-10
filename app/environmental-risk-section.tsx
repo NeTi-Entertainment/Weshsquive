@@ -56,8 +56,8 @@ export default function EnvironmentalRiskSection({ summaries }: EnvironmentalRis
         </table>
       </div>
       <p className="environmental-risk-note">
-        Cette moyenne, calculée par l’application à partir des indices comparatifs des communes voisines et pondérée par la distance,
-        décrit une exposition statistique relative. Ce n’est ni une statistique officielle du SSMSI, ni un percentile environnemental,
+        Cette moyenne, calculée par l’application à partir des indices d’exposition des communes voisines et pondérée par la distance,
+        décrit une exposition statistique. Ce n’est ni une statistique officielle du SSMSI, ni un percentile environnemental,
         ni une probabilité individuelle ou une garantie de sécurité. Les compléments départementaux SSMSI servent uniquement de fallback estimatif pour les catégories masquées; ils ne sont jamais affichés comme des valeurs communales.
       </p>
     </section>

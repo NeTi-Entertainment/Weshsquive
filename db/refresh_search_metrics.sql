@@ -27,7 +27,9 @@ insert into search_metrics_city_year_category (
     insee_log,
     insee_log_millesime,
     complement_info_nombre,
-    complement_info_taux
+    complement_info_taux,
+    category_exposure_score,
+    category_exposure_source
 )
 select
     :snapshot_id,
@@ -49,8 +51,14 @@ select
     metrics.insee_log,
     metrics.insee_log_millesime,
     metrics.complement_info_nombre,
-    metrics.complement_info_taux
-from city_year_category_metrics metrics;
+    metrics.complement_info_taux,
+    exposure.component_exposure_score,
+    exposure.component_source
+from city_year_category_metrics metrics
+left join city_year_comparative_components exposure
+  on exposure.city_insee_code = metrics.city_insee_code
+ and exposure.year = metrics.year
+ and exposure.category_code = metrics.category_code;
 
 insert into search_metrics_city_year_comparative (
     snapshot_id,
@@ -73,7 +81,10 @@ insert into search_metrics_city_year_comparative (
     comparative_index_status,
     comparative_index,
     comparative_index_confidence,
-    basket_version
+    basket_version,
+    effective_basket_category_count,
+    basket_index_coverage,
+    low_volume_cap_applied
 )
 select
     :snapshot_id,
@@ -81,22 +92,25 @@ select
     metrics.year,
     metrics.population,
     metrics.population_year,
-    metrics.population_band,
+    null::text,
     metrics.published_category_count,
     metrics.total_category_count,
     metrics.coverage_ratio,
     metrics.availability_mask,
     metrics.published_basket_category_count,
-    metrics.cohort_size,
+    0,
     metrics.estimated_basket_category_count,
-    metrics.comparable_basket_category_count,
+    metrics.effective_basket_category_count,
     metrics.estimated_availability_mask,
-    metrics.minimum_reference_cohort_size,
+    0,
     metrics.comparative_index_provenance,
     metrics.comparative_index_status,
     metrics.comparative_index,
-    metrics.comparative_index_confidence,
-    metrics.basket_version
+    null::text,
+    metrics.basket_version,
+    metrics.effective_basket_category_count,
+    metrics.basket_index_coverage,
+    metrics.low_volume_cap_applied
 from city_year_comparative_metrics metrics;
 
 insert into search_metrics_active (singleton, snapshot_id)

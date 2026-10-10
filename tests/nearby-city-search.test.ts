@@ -48,6 +48,12 @@ describe("nearby city search", () => {
     expect(query.text).not.toContain("coalesce(nm.population, 0)");
   });
 
+  it("provides the exposure score column when no map category is selected", () => {
+    const query = buildNearbyCitySearchQuery(params);
+
+    expect(query.text).toMatch(/null::smallint as insee_log_millesime,\s*null::numeric as category_exposure_score\s*\) map_category on true/);
+  });
+
   it("keeps the filtered total when the requested page has no rows", async () => {
     const query = buildNearbyCitySearchQuery(params);
     const rawMapPoint = {
@@ -59,19 +65,21 @@ describe("nearby city search", () => {
       population: 1044,
       populationYear: 2023,
       comparative_index: 82,
-      comparative_index_status: "comparable",
-      basket_version: "residential-risk-v2",
+      comparative_index_status: "available",
+      basket_version: "absolute-exposure-v1",
       published_basket_category_count: 4,
       estimated_basket_category_count: 2,
-      comparable_basket_category_count: 6,
+      effective_basket_category_count: 6,
+      basket_index_coverage: "1",
+      low_volume_cap_applied: false,
       availability_mask: 15,
       estimated_availability_mask: 48,
-      minimum_reference_cohort_size: 75,
       comparative_index_provenance: "partially-estimated",
-      population_band: "1000-4999",
       categoryLabel: null,
       categoryRatePer1000: null,
       categoryPercentile: null,
+      categoryExposureScore: null,
+      categoryColorMode: null,
       categoryCountUnit: null,
       categoryRateDenominator: "unknown",
       categoryPopulationDenominatorYear: null,
@@ -107,21 +115,22 @@ describe("nearby city search", () => {
         populationYear: 2023,
         comparativeIndex: {
           value: 82,
-          status: "comparable",
+          status: "available",
           provenance: "partially-estimated",
-          completeness: "high",
-          basketVersion: "residential-risk-v2",
+          basketVersion: "absolute-exposure-v1",
           publishedComponentCount: 4,
           estimatedComponentCount: 2,
-          comparableComponentCount: 6,
-          minimumReferenceCohortSize: 75,
+          availableComponentCount: 6,
+          coverageRatio: 1,
+          lowVolumeCapApplied: false,
           basketCategoryCount: 6,
-          basketAvailability: partiallyEstimatedBasketAvailability,
-          populationBand: "1000-4999"
+          basketAvailability: partiallyEstimatedBasketAvailability
         },
         categoryLabel: null,
         categoryRatePer1000: null,
         categoryPercentile: null,
+        categoryExposureScore: null,
+        categoryColorMode: null,
         categoryCountUnit: null,
         categoryRateDenominator: "unknown",
         categoryPopulationDenominatorYear: null,
@@ -284,6 +293,8 @@ describe("nearby city search", () => {
       0
     ]);
     expect(query.text).toContain("map_category_rates as (");
+    expect(query.text).toContain("exposure_index_category_anchors");
+    expect(query.text).toContain("category_exposure_score as map_category_exposure_score");
     expect(query.text).toContain("category.publication_status = 'published'");
     expect(query.text).toContain(
       "partition by population_band, count_unit, rate_denominator"
@@ -306,9 +317,11 @@ describe("nearby city search", () => {
     expect(query.text).toContain("as origin_exists");
     expect(query.text).toContain("from origin_status\ncross join filtered_count");
     expect(query.text).toContain("metrics.estimated_basket_category_count");
-    expect(query.text).toContain("metrics.comparable_basket_category_count");
+    expect(query.text).toContain("metrics.effective_basket_category_count");
+    expect(query.text).toContain("metrics.basket_index_coverage");
+    expect(query.text).toContain("metrics.low_volume_cap_applied");
     expect(query.text).toContain("metrics.estimated_availability_mask");
-    expect(query.text).toContain("metrics.minimum_reference_cohort_size");
+    expect(query.text).not.toContain("minimum_reference_cohort_size");
     expect(query.text).toContain("metrics.comparative_index_provenance");
     expect(query.text).toContain("metrics.basket_version");
     expect(query.text).not.toContain("coalesce(metrics.basket_version");
@@ -316,7 +329,7 @@ describe("nearby city search", () => {
     expect(query.text).not.toContain("complement_info_taux");
   });
 
-  it("maps v2 provenance and keeps a masked selected category null", async () => {
+  it("maps v3 provenance and keeps a masked selected category null", async () => {
     const selectedParams = parseNearbyCitySearchParams("95594", new URLSearchParams({
       year: "2025",
       radiusKm: "25",
@@ -344,16 +357,16 @@ describe("nearby city search", () => {
           total_category_count: 1,
           coverage_ratio: "0",
           comparative_index: 71,
-          comparative_index_status: "comparable",
-          basket_version: "residential-risk-v2",
+          comparative_index_status: "available",
+          basket_version: "absolute-exposure-v1",
           published_basket_category_count: 0,
           estimated_basket_category_count: 6,
-          comparable_basket_category_count: 6,
+          effective_basket_category_count: 6,
+          basket_index_coverage: "1",
+          low_volume_cap_applied: false,
           availability_mask: 0,
           estimated_availability_mask: 63,
-          minimum_reference_cohort_size: 61,
           comparative_index_provenance: "estimated-only",
-          population_band: "1000-4999",
           selected_category_label: "Exemple masqué",
           selected_category_incident_count: null,
           selected_category_rate_per_1000: null,
@@ -375,17 +388,16 @@ describe("nearby city search", () => {
 
     expect(result.results[0].comparativeIndex).toEqual({
       value: 71,
-      status: "comparable",
+      status: "available",
       provenance: "estimated-only",
-      completeness: "high",
-      basketVersion: "residential-risk-v2",
+      basketVersion: "absolute-exposure-v1",
       publishedComponentCount: 0,
       estimatedComponentCount: 6,
-      comparableComponentCount: 6,
-      minimumReferenceCohortSize: 61,
+      availableComponentCount: 6,
+      coverageRatio: 1,
+      lowVolumeCapApplied: false,
       basketCategoryCount: 6,
-      basketAvailability: estimatedOnlyBasketAvailability,
-      populationBand: "1000-4999"
+      basketAvailability: estimatedOnlyBasketAvailability
     });
     expect(result.results[0].selectedCategory).toMatchObject({
       publicationStatus: "masked",
@@ -420,19 +432,21 @@ function makeMapPoint(inseeCode: string) {
     population: 1044,
     populationYear: 2023,
     comparative_index: 82,
-    comparative_index_status: "comparable",
-    basket_version: "residential-risk-v2",
+    comparative_index_status: "available",
+    basket_version: "absolute-exposure-v1",
     published_basket_category_count: 4,
     estimated_basket_category_count: 2,
-    comparable_basket_category_count: 6,
+    effective_basket_category_count: 6,
+    basket_index_coverage: "1",
+    low_volume_cap_applied: false,
     availability_mask: 15,
     estimated_availability_mask: 48,
-    minimum_reference_cohort_size: 75,
     comparative_index_provenance: "partially-estimated",
-    population_band: "1000-4999",
     categoryLabel: null,
     categoryRatePer1000: null,
     categoryPercentile: null,
+    categoryExposureScore: null,
+    categoryColorMode: null,
     categoryCountUnit: null,
     categoryRateDenominator: "unknown",
     categoryPopulationDenominatorYear: null,

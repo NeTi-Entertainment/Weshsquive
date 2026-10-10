@@ -1,9 +1,9 @@
 import {
   comparativeIndexProvenanceLabel,
   type ComparativeIndex,
-  type ComparativeIndexCompleteness,
   type ComparativeIndexStatus
 } from "@/server/comparative-index";
+import { getExposureRiskBand } from "@/shared/exposure-index";
 
 export { comparativeIndexProvenanceLabel };
 
@@ -302,58 +302,31 @@ export function getStatCellClassName(
 }
 
 export function getComparativeIndexClassName(value: number | null): string {
-  return getStatCellClassName(value === null ? null : value / 100);
+  const band = getExposureRiskBand(value);
+  return band === "" ? "" : ["stat-cell", `stat-band-${band}`].join(" ");
 }
 
 export function formatComparativeIndex(value: number | null): string {
-  return value === null ? "Non comparable" : `${value} / 100`;
+  return value === null
+    ? "Non disponible"
+    : `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(value)} / 100`;
 }
 
 export function describeComparativeIndex(index: ComparativeIndex): string {
   const provenance = comparativeIndexProvenanceLabel(index.provenance);
   const componentCounts = comparativeIndexComponentCountLabel(index);
-  const populationBand = formatComparativeIndexPopulationBand(index.populationBand);
-  const referenceCount = index.minimumReferenceCohortSize;
-  const referenceLabel = referenceCount === 0
-    ? "indisponible"
-    : `${formatInteger(referenceCount)} commune${referenceCount > 1 ? "s" : ""}`;
   const estimationNote = index.estimatedComponentCount > 0
     ? " Les valeurs estimées sont des moyennes départementales SSMSI des communes masquées, pas des statistiques communales publiées."
     : "";
+  const capNote = index.lowVolumeCapApplied
+    ? " Le score a été plafonné à 35 selon la règle de faible volume publiée."
+    : "";
 
-  return `${provenance} · ${componentCounts} · tranche ${populationBand} · cohorte publiée minimale : ${referenceLabel}.${estimationNote}`;
+  return `${provenance} · ${componentCounts}${estimationNote}${capNote}`;
 }
 
 export function comparativeIndexComponentCountLabel(index: ComparativeIndex): string {
-  return `Composantes disponibles dans le panier : ${index.publishedComponentCount} publiées, ${index.estimatedComponentCount} estimées · composantes effectivement comparées dans l’indice : ${index.comparableComponentCount}`;
-}
-
-export function formatComparativeIndexPopulationBand(band: string | null): string {
-  switch (band) {
-    case "under-1000":
-      return "moins de 1 000 habitants";
-    case "1000-4999":
-      return `1 000 à 4 999 habitants`;
-    case "5000-9999":
-      return "5 000 à 9 999 habitants";
-    case "10000-49999":
-      return "10 000 à 49 999 habitants";
-    case "50000-plus":
-      return "50 000 habitants et plus";
-    case "50000-99999":
-      return "50 000 à 99 999 habitants";
-    case "100000-plus":
-      return "100 000 habitants et plus";
-    default:
-      return "inconnue";
-  }
-}
-
-export function comparativeIndexCompletenessLabel(
-  completeness: ComparativeIndexCompleteness
-): string {
-  const level = completeness === "high" ? "élevée" : completeness === "medium" ? "moyenne" : "faible";
-  return `Complétude de l’indice : ${level}`;
+  return `Couverture du panier : ${index.availableComponentCount}/${index.basketCategoryCount} composantes exploitables (${index.publishedComponentCount} publiées, ${index.estimatedComponentCount} estimées)`;
 }
 
 export function formatCoverage(published: number, total: number): string {
@@ -394,14 +367,9 @@ export function comparativeIndexStatusLabel(
   status: ComparativeIndexStatus
 ): string {
   switch (status) {
-    case "comparable":
-      return "Comparable";
-    case "reference-cohort-too-small":
-      return "Groupe trop petit";
-    case "population-unavailable":
-      return "Population indisponible";
-    case "insufficient-coverage":
+    case "available":
+      return "Score disponible";
     default:
-      return "Couverture insuffisante";
+      return "Aucune composante exploitable";
   }
 }

@@ -1,24 +1,15 @@
-export const COMPARATIVE_INDEX_BASKET = [
-  { code: "ssmsi-78384436563146dc6167ea53b7b5e0cd", label: "Cambriolages de logement" },
-  { code: "ssmsi-74a195792dd119f60822e61df3587522", label: "Vols de véhicule" },
-  { code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928", label: "Vols dans les véhicules" },
-  { code: "ssmsi-bf6b19b3e53b90f6594ec2e8303c5778", label: "Destructions et dégradations volontaires" },
-  {
-    code: "ssmsi-a2601b900aa009440624697e1d74e4a9",
-    label: "Violences physiques hors cadre familial"
-  },
-  { code: "ssmsi-bdbeb8ca73503f8264dab16159795328", label: "Trafic de stupéfiants" }
-] as const;
+import {
+  EXPOSURE_INDEX_ANCHORS,
+  EXPOSURE_INDEX_CALIBRATION_YEAR,
+  EXPOSURE_INDEX_GUARDRAIL_CAP,
+  EXPOSURE_INDEX_GUARDRAIL_COUNT,
+  EXPOSURE_INDEX_VERSION
+} from "@/shared/exposure-index";
 
-export const COMPARATIVE_INDEX_VERSION = "residential-risk-v2";
-export const COMPARATIVE_INDEX_MIN_CATEGORIES = 3;
-export const COMPARATIVE_INDEX_MIN_COHORT_SIZE = 50;
+export const COMPARATIVE_INDEX_BASKET = EXPOSURE_INDEX_ANCHORS.map(({ code, label }) => ({ code, label }));
+export const COMPARATIVE_INDEX_VERSION = EXPOSURE_INDEX_VERSION;
 
-export type ComparativeIndexStatus =
-  | "comparable"
-  | "insufficient-coverage"
-  | "reference-cohort-too-small"
-  | "population-unavailable";
+export type ComparativeIndexStatus = "available" | "unavailable";
 
 export type ComparativeIndexProvenance =
   | "published-only"
@@ -26,18 +17,16 @@ export type ComparativeIndexProvenance =
   | "estimated-only"
   | "unavailable";
 
-export type ComparativeIndexCompleteness = "high" | "medium" | "low";
-
 export type ComparativeIndex = {
   value: number | null;
   status: ComparativeIndexStatus;
   provenance: ComparativeIndexProvenance;
-  completeness: ComparativeIndexCompleteness | null;
   basketVersion: string | null;
   publishedComponentCount: number;
   estimatedComponentCount: number;
-  comparableComponentCount: number;
-  minimumReferenceCohortSize: number;
+  availableComponentCount: number;
+  coverageRatio: number;
+  lowVolumeCapApplied: boolean;
   basketCategoryCount: number;
   basketAvailability: Array<{
     code: string;
@@ -45,7 +34,6 @@ export type ComparativeIndex = {
     available: boolean;
     estimated: boolean;
   }>;
-  populationBand: string | null;
 };
 
 export type PublishedMetrics = {
@@ -60,12 +48,12 @@ export type ComparativeIndexColumns = {
   basket_version: string | null;
   published_basket_category_count: number | null;
   estimated_basket_category_count: number | null;
-  comparable_basket_category_count: number | null;
+  effective_basket_category_count: number | null;
+  basket_index_coverage: string | number | null;
   availability_mask: number | null;
   estimated_availability_mask: number | null;
-  minimum_reference_cohort_size: number | null;
   comparative_index_provenance: ComparativeIndexProvenance | null;
-  population_band: string | null;
+  low_volume_cap_applied: boolean | null;
 };
 
 export type PublishedMetricsColumns = {
@@ -74,94 +62,72 @@ export type PublishedMetricsColumns = {
   coverage_ratio: string | null;
 };
 
-export function mapComparativeIndex(
-  row: ComparativeIndexColumns,
-  population: number | null
-): ComparativeIndex {
+export function mapComparativeIndex(row: ComparativeIndexColumns): ComparativeIndex {
   if (
     row.basket_version !== COMPARATIVE_INDEX_VERSION ||
-    row.comparative_index_status == null ||
-    row.comparative_index_provenance == null ||
-    row.published_basket_category_count == null ||
-    row.estimated_basket_category_count == null ||
-    row.comparable_basket_category_count == null ||
-    row.availability_mask == null ||
-    row.estimated_availability_mask == null ||
-    row.minimum_reference_cohort_size == null
+    row.comparative_index_status === null ||
+    row.comparative_index_provenance === null ||
+    row.published_basket_category_count === null ||
+    row.estimated_basket_category_count === null ||
+    row.effective_basket_category_count === null ||
+    row.availability_mask === null ||
+    row.estimated_availability_mask === null ||
+    row.low_volume_cap_applied === null
   ) {
-    return unavailableComparativeIndex(
-      population === null || population <= 0
-        ? "population-unavailable"
-        : "insufficient-coverage",
-      row.basket_version ?? null,
-      row.population_band ?? null
-    );
+    return unavailableComparativeIndex(row.basket_version ?? null);
   }
 
-  const comparableComponentCount = row.comparable_basket_category_count ?? 0;
-  const isComparable =
-    row.comparative_index_status === "comparable" &&
+  const availableComponentCount = row.effective_basket_category_count;
+  const isAvailable =
+    row.comparative_index_status === "available" &&
     row.comparative_index !== null &&
-    row.comparative_index !== undefined &&
-    row.comparative_index_provenance !== "unavailable" &&
-    comparableComponentCount >= COMPARATIVE_INDEX_MIN_CATEGORIES;
-  const status = row.comparative_index_status === "comparable" && !isComparable
-    ? "insufficient-coverage"
-    : row.comparative_index_status;
-  const completeness = !isComparable
-    ? null
-    : comparableComponentCount >= 6
-      ? "high"
-      : comparableComponentCount >= 4
-        ? "medium"
-        : comparableComponentCount === 3
-          ? "low"
-          : null;
-  const publishedComponentCount = row.published_basket_category_count ?? 0;
-  const minimumReferenceCohortSize = row.minimum_reference_cohort_size ?? 0;
+    availableComponentCount > 0 &&
+    row.comparative_index_provenance !== "unavailable";
+  const publishedComponentCount = row.published_basket_category_count;
+  const estimatedComponentCount = row.estimated_basket_category_count;
+  const coverageRatio = row.basket_index_coverage == null
+    ? availableComponentCount / EXPOSURE_INDEX_ANCHORS.length
+    : Number(row.basket_index_coverage);
+  const publishedMask = row.availability_mask;
+  const estimatedMask = row.estimated_availability_mask;
 
   return {
-    value: isComparable ? row.comparative_index ?? null : null,
-    status,
-    provenance: isComparable ? row.comparative_index_provenance ?? "unavailable" : "unavailable",
-    completeness,
-    basketVersion: row.basket_version ?? COMPARATIVE_INDEX_VERSION,
+    value: isAvailable ? Number(row.comparative_index) : null,
+    status: isAvailable ? "available" : "unavailable",
+    provenance: isAvailable ? row.comparative_index_provenance : "unavailable",
+    basketVersion: row.basket_version,
     publishedComponentCount,
-    estimatedComponentCount: row.estimated_basket_category_count ?? 0,
-    comparableComponentCount,
-    minimumReferenceCohortSize,
-    basketCategoryCount: COMPARATIVE_INDEX_BASKET.length,
-    basketAvailability: COMPARATIVE_INDEX_BASKET.map((category, index) => {
-      const published = ((row.availability_mask ?? 0) & (1 << index)) !== 0;
-      const estimated = ((row.estimated_availability_mask ?? 0) & (1 << index)) !== 0;
-      return { ...category, available: published || estimated, estimated };
-    }),
-    populationBand: row.population_band ?? null
+    estimatedComponentCount,
+    availableComponentCount,
+    coverageRatio: Number.isFinite(coverageRatio) ? coverageRatio : 0,
+    lowVolumeCapApplied: isAvailable && row.low_volume_cap_applied,
+    basketCategoryCount: EXPOSURE_INDEX_ANCHORS.length,
+    basketAvailability: EXPOSURE_INDEX_ANCHORS.map((category, index) => {
+      const published = (publishedMask & (1 << index)) !== 0;
+      const estimated = (estimatedMask & (1 << index)) !== 0;
+      return { code: category.code, label: category.label, available: published || estimated, estimated };
+    })
   };
 }
 
-function unavailableComparativeIndex(
-  status: Exclude<ComparativeIndexStatus, "comparable">,
-  basketVersion: string | null,
-  populationBand: string | null
-): ComparativeIndex {
+function unavailableComparativeIndex(basketVersion: string | null): ComparativeIndex {
   return {
     value: null,
-    status,
+    status: "unavailable",
     provenance: "unavailable",
-    completeness: null,
     basketVersion,
     publishedComponentCount: 0,
     estimatedComponentCount: 0,
-    comparableComponentCount: 0,
-    minimumReferenceCohortSize: 0,
-    basketCategoryCount: COMPARATIVE_INDEX_BASKET.length,
-    basketAvailability: COMPARATIVE_INDEX_BASKET.map((category) => ({
-      ...category,
+    availableComponentCount: 0,
+    coverageRatio: 0,
+    lowVolumeCapApplied: false,
+    basketCategoryCount: EXPOSURE_INDEX_ANCHORS.length,
+    basketAvailability: EXPOSURE_INDEX_ANCHORS.map((category) => ({
+      code: category.code,
+      label: category.label,
       available: false,
       estimated: false
-    })),
-    populationBand
+    }))
   };
 }
 
@@ -189,8 +155,15 @@ export function mapPublishedMetrics(row: PublishedMetricsColumns): PublishedMetr
 }
 
 export const comparativeIndexMetadata = {
+  name: "Indice d’exposition calculé par l’application",
   version: COMPARATIVE_INDEX_VERSION,
-  basket: COMPARATIVE_INDEX_BASKET,
-  minimumComparableComponents: COMPARATIVE_INDEX_MIN_CATEGORIES,
-  minimumReferenceCohortSize: COMPARATIVE_INDEX_MIN_COHORT_SIZE
+  calibrationYear: EXPOSURE_INDEX_CALIBRATION_YEAR,
+  basket: EXPOSURE_INDEX_ANCHORS,
+  formula: "Moyenne à poids égal des scores de taux par catégorie : min(100, taux / ancre 2025 x 100).",
+  colorThresholds: [10, 35, 50, 65, 85],
+  guardrailCount: EXPOSURE_INDEX_GUARDRAIL_COUNT,
+  guardrailCap: EXPOSURE_INDEX_GUARDRAIL_CAP,
+  guardrail: "Plafond à 35 si les deux nombres publiés en unité Infraction totalisent moins de 10 et si au moins cinq catégories du panier sont publiées.",
+  temporalSmoothing: false,
+  estimatedValues: "Les compléments SSMSI ne servent qu’au calcul d’une composante estimée et ne sont jamais présentés comme une statistique communale."
 };

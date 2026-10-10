@@ -10,7 +10,6 @@ import {
   describeComparativeIndex,
   formatCategoryRate,
   formatComparativeIndex,
-  formatComparativeIndexPopulationBand,
   formatInteger,
   formatPopulation
 } from "@/client/city-search-ui";
@@ -107,12 +106,10 @@ function MapMetric({ point, criterion }: { point: NearbyMapPoint; criterion: Nea
 
   return (
     <>
-      <strong>Indice comparatif : {formatComparativeIndex(point.comparativeIndex.value)}</strong>
+      <strong>Indice d’exposition : {formatComparativeIndex(point.comparativeIndex.value)}</strong>
       <span>{comparativeIndexProvenanceLabel(point.comparativeIndex.provenance)}</span>
       <span>{comparativeIndexComponentCountLabel(point.comparativeIndex)}</span>
-      <span>
-        {formatComparativeIndexPopulationBand(point.comparativeIndex.populationBand)} · cohorte publiée minimale : {point.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(point.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
-      </span>
+      {point.comparativeIndex.lowVolumeCapApplied ? <span>Plafond faible volume appliqué</span> : null}
       {point.comparativeIndex.estimatedComponentCount > 0 ? (
         <span title={describeComparativeIndex(point.comparativeIndex)}>
           Les estimations sont des moyennes départementales SSMSI des communes masquées.

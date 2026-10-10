@@ -17,7 +17,6 @@ import {
   formatCategoryRate,
   formatInteger,
   formatPopulation,
-  formatComparativeIndexPopulationBand,
   getComparativeIndexClassName,
   getNextOffset,
   getPreviousOffset,
@@ -43,6 +42,7 @@ type CitySearchResponse = {
 };
 
 type LoadState = "idle" | "loading" | "ready" | "error";
+type ViewMode = "table" | "map";
 
 export default function CitySearchPage() {
   const [form, setForm] = useState<CitySearchFormState>(defaultSearchForm);
@@ -51,7 +51,8 @@ export default function CitySearchPage() {
   const [results, setResults] = useState<CitySearchResult[]>([]);
   const [selectedCities, setSelectedCities] = useState<CitySearchResult[]>([]);
   const [comparisonOpen, setComparisonOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"table" | "map">("table");
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [mapOptionsOpen, setMapOptionsOpen] = useState(false);
   const [mapCriterion, setMapCriterion] = useState<NationalMapCriterion>({ type: "comparativeIndex" });
   const [categoryOptions, setCategoryOptions] = useState<
     Array<{ code: string; label: string }>
@@ -188,8 +189,178 @@ export default function CitySearchPage() {
     );
   }
 
+  function changeViewMode(nextMode: ViewMode) {
+    setViewMode(nextMode);
+    if (nextMode === "table") setMapOptionsOpen(false);
+  }
+
+  const searchFilters = (
+    <form className="filter-panel" onSubmit={handleSubmit}>
+      <label>
+        Année
+        <input
+          type="number"
+          min="2000"
+          max="2100"
+          value={form.year}
+          onChange={(event) => updateField("year", event.target.value)}
+          required
+        />
+      </label>
+
+      <label>
+        Région
+        <input
+          value={form.regionCode}
+          onChange={(event) => updateField("regionCode", event.target.value)}
+          placeholder="11"
+        />
+      </label>
+
+      <label>
+        Département
+        <input
+          value={form.departmentCode}
+          onChange={(event) => updateField("departmentCode", event.target.value)}
+          placeholder="95"
+        />
+      </label>
+
+      <label className="wide-filter">
+        Commune
+        <input
+          value={form.commune}
+          onChange={(event) => updateField("commune", event.target.value)}
+          placeholder="Seugy"
+        />
+      </label>
+
+      <label>
+        Population min.
+        <input
+          type="number"
+          min="0"
+          value={form.populationMin}
+          onChange={(event) => updateField("populationMin", event.target.value)}
+        />
+      </label>
+
+      <label>
+        Population max.
+        <input
+          type="number"
+          min="0"
+          value={form.populationMax}
+          onChange={(event) => updateField("populationMax", event.target.value)}
+        />
+      </label>
+
+      <label>
+        Indice min.
+        <input
+          type="number"
+          min="0"
+          max="100"
+          value={form.comparativeIndexMin}
+          onChange={(event) => updateField("comparativeIndexMin", event.target.value)}
+        />
+      </label>
+
+      <label>
+        Indice max.
+        <input
+          type="number"
+          min="0"
+          max="100"
+          value={form.comparativeIndexMax}
+          onChange={(event) => updateField("comparativeIndexMax", event.target.value)}
+        />
+      </label>
+
+      <label className="wide-filter">
+        Catégorie
+        <select
+          value={form.categoryCode}
+          onChange={(event) => updateField("categoryCode", event.target.value)}
+        >
+          <option value="">Toutes</option>
+          {categoryOptions.map((category) => (
+            <option key={category.code} value={category.code}>
+              {category.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Faits cat. min.
+        <input
+          type="number"
+          min="0"
+          value={form.categoryIncidentMin}
+          onChange={(event) => updateField("categoryIncidentMin", event.target.value)}
+          disabled={!form.categoryCode}
+        />
+      </label>
+
+      <label>
+        Faits cat. max.
+        <input
+          type="number"
+          min="0"
+          value={form.categoryIncidentMax}
+          onChange={(event) => updateField("categoryIncidentMax", event.target.value)}
+          disabled={!form.categoryCode}
+        />
+      </label>
+
+      <label>
+        Taux cat. min.
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={form.categoryRateMin}
+          onChange={(event) => updateField("categoryRateMin", event.target.value)}
+          disabled={!form.categoryCode}
+        />
+      </label>
+
+      <label>
+        Taux cat. max.
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={form.categoryRateMax}
+          onChange={(event) => updateField("categoryRateMax", event.target.value)}
+          disabled={!form.categoryCode}
+        />
+      </label>
+
+      <label>
+        Lignes
+        <select value={form.limit} onChange={(event) => updateField("limit", event.target.value)}>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+        </select>
+      </label>
+
+      <div className="filter-actions">
+        <button type="submit" disabled={loadState === "loading"}>
+          Rechercher
+        </button>
+        <button type="button" className="secondary-button" onClick={resetFilters}>
+          Réinitialiser
+        </button>
+      </div>
+    </form>
+  );
+
   return (
-    <main className="app-shell">
+    <main className={viewMode === "map" ? "app-shell map-workspace-active" : "app-shell"}>
       <header className="top-bar">
         <div>
           <h1>Recherche communale</h1>
@@ -197,213 +368,35 @@ export default function CitySearchPage() {
         </div>
         <div className="status-strip">
           <span>Année {submittedForm.year}</span>
-          <span>{results.length} lignes affichées</span>
+          {viewMode === "table" ? <span>{results.length} lignes affichées</span> : null}
         </div>
       </header>
 
-      <form className="filter-panel" onSubmit={handleSubmit}>
-        <label>
-          Année
-          <input
-            type="number"
-            min="2000"
-            max="2100"
-            value={form.year}
-            onChange={(event) => updateField("year", event.target.value)}
-            required
-          />
-        </label>
+      {viewMode === "table" ? searchFilters : null}
 
-        <label>
-          Région
-          <input
-            value={form.regionCode}
-            onChange={(event) => updateField("regionCode", event.target.value)}
-            placeholder="11"
-          />
-        </label>
-
-        <label>
-          Département
-          <input
-            value={form.departmentCode}
-            onChange={(event) => updateField("departmentCode", event.target.value)}
-            placeholder="95"
-          />
-        </label>
-
-        <label className="wide-filter">
-          Commune
-          <input
-            value={form.commune}
-            onChange={(event) => updateField("commune", event.target.value)}
-            placeholder="Seugy"
-          />
-        </label>
-
-        <label>
-          Population min.
-          <input
-            type="number"
-            min="0"
-            value={form.populationMin}
-            onChange={(event) => updateField("populationMin", event.target.value)}
-          />
-        </label>
-
-        <label>
-          Population max.
-          <input
-            type="number"
-            min="0"
-            value={form.populationMax}
-            onChange={(event) => updateField("populationMax", event.target.value)}
-          />
-        </label>
-
-        <label>
-          Indice min.
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={form.comparativeIndexMin}
-            onChange={(event) => updateField("comparativeIndexMin", event.target.value)}
-          />
-        </label>
-
-        <label>
-          Indice max.
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={form.comparativeIndexMax}
-            onChange={(event) => updateField("comparativeIndexMax", event.target.value)}
-          />
-        </label>
-
-        <label className="wide-filter">
-          Catégorie
-          <select
-            value={form.categoryCode}
-            onChange={(event) => updateField("categoryCode", event.target.value)}
-          >
-            <option value="">Toutes</option>
-            {categoryOptions.map((category) => (
-              <option key={category.code} value={category.code}>
-                {category.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Faits cat. min.
-          <input
-            type="number"
-            min="0"
-            value={form.categoryIncidentMin}
-            onChange={(event) => updateField("categoryIncidentMin", event.target.value)}
-            disabled={!form.categoryCode}
-          />
-        </label>
-
-        <label>
-          Faits cat. max.
-          <input
-            type="number"
-            min="0"
-            value={form.categoryIncidentMax}
-            onChange={(event) => updateField("categoryIncidentMax", event.target.value)}
-            disabled={!form.categoryCode}
-          />
-        </label>
-
-        <label>
-          Taux cat. min.
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.categoryRateMin}
-            onChange={(event) => updateField("categoryRateMin", event.target.value)}
-            disabled={!form.categoryCode}
-          />
-        </label>
-
-        <label>
-          Taux cat. max.
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.categoryRateMax}
-            onChange={(event) => updateField("categoryRateMax", event.target.value)}
-            disabled={!form.categoryCode}
-          />
-        </label>
-
-        <label>
-          Lignes
-          <select value={form.limit} onChange={(event) => updateField("limit", event.target.value)}>
-            <option value="25">25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-            <option value="200">200</option>
-          </select>
-        </label>
-
-        <div className="filter-actions">
-          <button type="submit" disabled={loadState === "loading"}>
-            Rechercher
-          </button>
-          <button type="button" className="secondary-button" onClick={resetFilters}>
-            Réinitialiser
-          </button>
-        </div>
-      </form>
-
-      <section className="results-toolbar">
+      <section className={viewMode === "table" ? "results-toolbar" : "map-view-toolbar"}>
         {viewMode === "table" ? (
           <div>
             <strong>{loadState === "loading" ? "Chargement" : `${results.length} communes sur cette page`}</strong>
             <span>{currentOffset + 1}-{currentOffset + results.length}</span>
-            <span>Indice relatif calculé par l’application, fondé sur des percentiles par catégorie; ce n’est pas un total officiel.</span>
+            <span>Indice d’exposition de l’application, fondé sur une échelle fixe de taux par catégorie; ce n’est pas une statistique officielle.</span>
           </div>
         ) : (
           <div>
-            <strong>Carte · filtres actifs</strong>
-            <span>Les communes sont colorées par contour, à l’échelle adaptée au zoom et au champ visible.</span>
+            <strong>Carte des communes</strong>
+            <span>Contours colorés selon le calque sélectionné</span>
           </div>
         )}
-        <div className="view-switch" role="group" aria-label="Mode d’affichage">
-          <button
-            type="button"
-            className={viewMode === "table" ? "active-view" : ""}
-            aria-pressed={viewMode === "table"}
-            onClick={() => setViewMode("table")}
-          >
-            Tableau
-          </button>
-          <button
-            type="button"
-            className={viewMode === "map" ? "active-view" : ""}
-            aria-pressed={viewMode === "map"}
-            onClick={() => setViewMode("map")}
-          >
-            Carte
-          </button>
-        </div>
+        <ViewSwitch viewMode={viewMode} onChange={changeViewMode} />
         {viewMode === "table" ? (
           <>
-            <div className="color-legend" aria-label="Percentile de l'indice comparatif">
-              <span className="stat-band-very-low">0-20</span>
-              <span className="stat-band-low">20-40</span>
-              <span className="stat-band-medium">40-60</span>
-              <span className="stat-band-high">60-80</span>
-              <span className="stat-band-very-high">80-95</span>
-              <span className="stat-band-extreme">95-100</span>
+            <div className="color-legend" aria-label="Niveaux fixes de l’indice d’exposition">
+              <span className="stat-band-very-low">0–10 Très faible</span>
+              <span className="stat-band-low">&gt;10–35 Faible</span>
+              <span className="stat-band-medium">&gt;35–50 Modérée</span>
+              <span className="stat-band-high">&gt;50–65 Élevée</span>
+              <span className="stat-band-very-high">&gt;65–85 Très élevée</span>
+              <span className="stat-band-extreme">&gt;85–100 Extrême</span>
             </div>
             <div className="comparison-actions">
               <span aria-live="polite">
@@ -450,10 +443,20 @@ export default function CitySearchPage() {
               </button>
             </div>
           </>
-        ) : null}
+        ) : (
+          <button
+            type="button"
+            className="secondary-button map-options-toggle"
+            aria-expanded={mapOptionsOpen}
+            aria-controls="map-options-panel"
+            onClick={() => setMapOptionsOpen((open) => !open)}
+          >
+            {mapOptionsOpen ? "Masquer les options" : "Options"}
+          </button>
+        )}
       </section>
 
-      {loadState === "error" ? <p className="notice error">{errorMessage}</p> : null}
+      {viewMode === "table" && loadState === "error" ? <p className="notice error">{errorMessage}</p> : null}
       {viewMode === "table" && loadState === "ready" && results.length === 0 ? (
         <p className="notice">Aucune commune ne correspond aux filtres.</p>
       ) : null}
@@ -475,6 +478,9 @@ export default function CitySearchPage() {
           categories={categoryOptions}
           criterion={mapCriterion}
           onCriterionChange={setMapCriterion}
+          optionsOpen={mapOptionsOpen}
+          filtersPanel={searchFilters}
+          searchError={loadState === "error" ? errorMessage : ""}
         />
       ) : <div className="table-frame" aria-busy={loadState === "loading"}>
         <table>
@@ -508,9 +514,9 @@ export default function CitySearchPage() {
                   type="button"
                   className={sortButtonClass("comparativeIndex")}
                   onClick={() => sortByColumn("comparativeIndex")}
-                  title="Trier par indice comparatif"
+                  title="Trier par indice d’exposition"
                 >
-                  Indice comparatif {sortIndicator("comparativeIndex")}
+                  Indice d’exposition {sortIndicator("comparativeIndex")}
                 </button>
               </th>
               {categoryColumns.map((category) => (
@@ -588,7 +594,7 @@ export default function CitySearchPage() {
                   <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance)}</span>
                   <span>{comparativeIndexComponentCountLabel(result.comparativeIndex)}</span>
                   <span>
-                    {formatComparativeIndexPopulationBand(result.comparativeIndex.populationBand)} · cohorte publiée minimale : {result.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(result.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
+                    {result.comparativeIndex.lowVolumeCapApplied ? "Plafond faible volume appliqué" : "Échelle fixe calibrée sur les taux 2025"}
                   </span>
                 </td>
                 {categoryColumns.map((category) => {
@@ -624,5 +630,34 @@ export default function CitySearchPage() {
       </div>}
 
     </main>
+  );
+}
+
+function ViewSwitch({
+  viewMode,
+  onChange
+}: {
+  viewMode: ViewMode;
+  onChange(viewMode: ViewMode): void;
+}) {
+  return (
+    <div className="view-switch" role="group" aria-label="Vue des résultats">
+      <button
+        type="button"
+        aria-pressed={viewMode === "table"}
+        className={viewMode === "table" ? "active-view" : ""}
+        onClick={() => onChange("table")}
+      >
+        Liste
+      </button>
+      <button
+        type="button"
+        aria-pressed={viewMode === "map"}
+        className={viewMode === "map" ? "active-view" : ""}
+        onClick={() => onChange("map")}
+      >
+        Carte
+      </button>
+    </div>
   );
 }

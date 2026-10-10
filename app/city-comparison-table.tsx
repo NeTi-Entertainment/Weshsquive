@@ -11,7 +11,6 @@ import {
   formatCoverage,
   formatInteger,
   formatPopulation,
-  formatComparativeIndexPopulationBand,
   getComparativeIndexClassName,
   type CitySearchResult
 } from "@/client/city-search-ui";
@@ -41,7 +40,7 @@ export default function CityComparisonTable({
         <div>
           <h2 id="city-comparison-title">Comparaison des communes</h2>
           <p>
-            Année {year} · indices à comparer uniquement dans une même tranche de population · aucune somme multi-catégories
+            Année {year} · indice d’exposition à échelle fixe · catégories comparées séparément, sans somme d’unités différentes
           </p>
         </div>
         <span>{cities.length} communes</span>
@@ -97,7 +96,7 @@ export default function CityComparisonTable({
               ))}
             </tr>
             <tr>
-              <th scope="row">Indice comparatif</th>
+              <th scope="row">Indice d’exposition</th>
               {cities.map((city) => (
                 <td
                   key={city.inseeCode}
@@ -107,12 +106,7 @@ export default function CityComparisonTable({
                   <strong>{formatComparativeIndex(city.comparativeIndex.value)}</strong>
                   <span>{comparativeIndexProvenanceLabel(city.comparativeIndex.provenance)}</span>
                   <span>{comparativeIndexComponentCountLabel(city.comparativeIndex)}</span>
-                  <span>{formatComparativeIndexPopulationBand(city.comparativeIndex.populationBand)}</span>
-                  <span>
-                    Cohorte publiée minimale : {city.comparativeIndex.minimumReferenceCohortSize > 0
-                      ? `${formatInteger(city.comparativeIndex.minimumReferenceCohortSize)} communes`
-                      : "indisponible"}
-                  </span>
+                  {city.comparativeIndex.lowVolumeCapApplied ? <span>Plafond faible volume appliqué</span> : null}
                 </td>
               ))}
             </tr>

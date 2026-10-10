@@ -449,6 +449,94 @@ from crime_stats;
         -Expected "residential-risk-v2" `
         -Message "The v2 formula must identify its basket version"
 
+    Invoke-Psql -Sql @'
+insert into cities(insee_code, name, department_code, region_code, reference_population, population_year) values
+('V3P01', 'Exposure guardrail', '75', '11', 100000, 2025),
+('V3P02', 'Same rate larger city', '75', '11', 500000, 2025);
+
+insert into crime_stats(
+    city_insee_code, year, category_id, incident_count, rate_per_1000,
+    publication_status, source, count_unit, insee_pop, insee_pop_millesime,
+    insee_log, insee_log_millesime, complement_info_taux, rate_denominator
+)
+select 'V3P01', 2025, category.id, fixture.incident_count, fixture.rate_per_1000,
+       fixture.publication_status::publication_status, 'fixture', fixture.count_unit,
+       100000, 2025, 1000, 2025, fixture.complement_rate, fixture.rate_denominator
+from (values
+    ('ssmsi-78384436563146dc6167ea53b7b5e0cd', 4, 4::numeric, 'published', 'Infraction', 'housing', null::numeric),
+    ('ssmsi-74a195792dd119f60822e61df3587522', 520, 5.1964::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('ssmsi-d3e9d2e40d72b8850d5283eb73bdc928', 1325, 13.2453::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('ssmsi-bf6b19b3e53b90f6594ec2e8303c5778', 3, 0.03::numeric, 'published', 'Infraction', 'population', null::numeric),
+    ('ssmsi-a2601b900aa009440624697e1d74e4a9', null::integer, null::numeric, 'masked', 'Victime', 'population', 8.5257::numeric),
+    ('ssmsi-bdbeb8ca73503f8264dab16159795328', 518, 5.1832::numeric, 'published', 'Mis en cause', 'population', null::numeric)
+) as fixture(category_code, incident_count, rate_per_1000, publication_status, count_unit, rate_denominator, complement_rate)
+join crime_categories category on category.code = fixture.category_code;
+
+insert into crime_stats(
+    city_insee_code, year, category_id, incident_count, rate_per_1000,
+    publication_status, source, count_unit, insee_pop, insee_pop_millesime,
+    insee_log, insee_log_millesime, rate_denominator
+)
+select 'V3P02', 2025, category.id, 200, 4, 'published', 'fixture', 'Infraction',
+       500000, 2025, 50000, 2025, 'housing'
+from crime_categories category
+where category.code = 'ssmsi-78384436563146dc6167ea53b7b5e0cd';
+'@ | Out-Null
+
+    $rawValuesBeforeExposureMigration = (Invoke-Psql -Sql @'
+select md5(string_agg(
+    jsonb_build_array(city_insee_code, year, category_id, incident_count, rate_per_1000,
+        publication_status::text, source, count_unit, insee_pop, insee_pop_millesime,
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux,
+        rate_denominator)::text,
+    E'\n' order by id
+)) from crime_stats;
+'@ -TuplesOnly).Trim()
+
+    $exposureMigration = Get-Item (Join-Path $migrationDir "008_absolute_exposure_index.sql")
+    docker cp $exposureMigration.FullName "${ContainerName}:/tmp/$($exposureMigration.Name)" | Out-Null
+    docker exec -e PGPASSWORD=postgres $ContainerName `
+        psql -v ON_ERROR_STOP=1 -U postgres -d $DatabaseName -f "/tmp/$($exposureMigration.Name)" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Migration failed: $($exposureMigration.Name)" }
+
+    Assert-SqlEquals `
+        -Sql "select count(*) from exposure_index_category_anchors where calibration_year=2025;" `
+        -Expected "6" `
+        -Message "The fixed 2025 exposure calibration must cover all six basket categories"
+
+    Assert-SqlEquals `
+        -Sql "select round(max(component_exposure_score), 4) || '|' || round(min(component_exposure_score), 4) from city_year_comparative_components where category_code='ssmsi-78384436563146dc6167ea53b7b5e0cd' and city_insee_code in ('V3P01','V3P02');" `
+        -Expected "24.9268|24.9268" `
+        -Message "An identical published rate must have the same risk score across population sizes"
+
+    Assert-SqlEquals `
+        -Sql "select comparative_index || '|' || comparative_index_provenance || '|' || published_basket_category_count || '|' || estimated_basket_category_count || '|' || low_volume_cap_applied from city_year_comparative_metrics where city_insee_code='V3P01' and year=2025;" `
+        -Expected "35|partially-estimated|5|1|true" `
+        -Message "The guardrail must cap an otherwise high score using the two published Infraction counts only"
+
+    Assert-SqlEquals `
+        -Sql "select component.component_source || '|' || round(component.component_exposure_score, 1) || '|' || (metrics.rate_per_1000 is null)::text from city_year_comparative_components component join city_year_category_metrics metrics using (city_insee_code, year, category_code) where component.city_insee_code='V3P01' and component.category_code='ssmsi-a2601b900aa009440624697e1d74e4a9';" `
+        -Expected "department-masked-average|100.0|true" `
+        -Message "A department complement may score a masked component without publishing a communal rate"
+
+    Assert-SqlEquals `
+        -Sql "select comparative_index || '|' || low_volume_cap_applied from city_year_comparative_metrics where city_insee_code='V3P02' and year=2025;" `
+        -Expected "24.9|false" `
+        -Message "One published category remains usable without triggering a count-based cap"
+
+    Assert-SqlEquals `
+        -Sql @'
+select md5(string_agg(
+    jsonb_build_array(city_insee_code, year, category_id, incident_count, rate_per_1000,
+        publication_status::text, source, count_unit, insee_pop, insee_pop_millesime,
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux,
+        rate_denominator)::text,
+    E'\n' order by id
+)) from crime_stats;
+'@ `
+        -Expected $rawValuesBeforeExposureMigration `
+        -Message "The absolute exposure migration must not modify raw official SSMSI rows"
+
     & $refreshScript `
         -ContainerName $ContainerName `
         -DatabaseName $DatabaseName `
@@ -461,9 +549,29 @@ from crime_stats;
         -Message "Category snapshots must preserve complement fields used by v2 calculations"
 
     Assert-SqlEquals `
-        -Sql "select estimated_basket_category_count || '|' || comparable_basket_category_count || '|' || estimated_availability_mask || '|' || minimum_reference_cohort_size || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='Q0001' and year=2025;" `
-        -Expected "1|3|2|52|partially-estimated" `
-        -Message "Comparative snapshots must preserve every v2 summary field"
+        -Sql "select published_basket_category_count || '|' || estimated_basket_category_count || '|' || effective_basket_category_count || '|' || low_volume_cap_applied || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='Q0001' and year=2025;" `
+        -Expected "1|0|1|false|published-only" `
+        -Message "Comparative snapshots must preserve absolute exposure coverage and provenance"
+
+    Assert-SqlEquals `
+        -Sql "select effective_basket_category_count || '|' || low_volume_cap_applied || '|' || basket_index_coverage from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P01' and year=2025;" `
+        -Expected "6|true|1.00000000000000000000" `
+        -Message "The active snapshot must preserve exposure coverage and cap metadata"
+
+    Assert-SqlEquals `
+        -Sql "select comparative_index::text || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P02' and year=2025;" `
+        -Expected "24.9|published-only" `
+        -Message "The active snapshot must preserve one-decimal exposure scores"
+
+    Assert-SqlEquals `
+        -Sql "select availability_mask || '|' || estimated_availability_mask from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P01' and year=2025;" `
+        -Expected "47|16" `
+        -Message "The active snapshot must retain published versus estimated category provenance"
+
+    Assert-SqlEquals `
+        -Sql "select round(category_exposure_score, 4) || '|' || category_exposure_source from search_metrics_city_year_category where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P01' and year=2025 and category_code='ssmsi-a2601b900aa009440624697e1d74e4a9';" `
+        -Expected "100.0000|department-masked-average" `
+        -Message "The category snapshot must preserve the estimated provenance of its derived score"
 
     $snapshotBeforeFailure = (Invoke-Psql -Sql "select snapshot_id from search_metrics_active where singleton;" -TuplesOnly).Trim()
     Invoke-Psql -Sql @'
@@ -504,7 +612,7 @@ for each row execute function fail_v2_snapshot_for_test();
         -Message "A failed v2 refresh must roll back its partial snapshot"
     Invoke-Psql -Sql "drop trigger fail_v2_snapshot_for_test on search_metrics_city_year_comparative; drop function fail_v2_snapshot_for_test();" | Out-Null
 
-    Write-Host "Comparative index v2 database test passed."
+    Write-Host "Absolute exposure index database test passed."
 }
 finally {
     docker rm -f $ContainerName 2>$null | Out-Null

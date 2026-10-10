@@ -7,6 +7,7 @@ import type {
   ComparativeIndex,
   ComparativeIndexProvenance
 } from "@/server/comparative-index";
+import { getExposureRiskBand } from "@/shared/exposure-index";
 
 export type NearbyMapCriterion =
   | { type: "comparativeIndex" }
@@ -29,6 +30,8 @@ export type NearbyMapPoint = {
   categoryLabel: string | null;
   categoryRatePer1000: string | number | null;
   categoryPercentile: string | number | null;
+  categoryExposureScore: string | number | null;
+  categoryColorMode: "absolute-exposure" | "percentile" | null;
   categoryCountUnit: string | null;
   categoryRateDenominator: "population" | "housing" | "unknown";
   categoryPopulationDenominatorYear: number | null;
@@ -39,7 +42,12 @@ export type NearbyMapPoint = {
 
 export type NearbyMapColorPoint = Pick<
   NearbyMapPoint,
-  "comparativeIndex" | "categoryPercentile" | "categoryPublicationStatus" | "environmentalRisk"
+  | "comparativeIndex"
+  | "categoryPercentile"
+  | "categoryExposureScore"
+  | "categoryColorMode"
+  | "categoryPublicationStatus"
+  | "environmentalRisk"
 >;
 
 export type ComparativeIndexVisualStyle = {
@@ -74,7 +82,7 @@ export function getComparativeIndexVisualStyle(
 ): ComparativeIndexVisualStyle {
   const band = value === null || !Number.isFinite(value)
     ? ""
-    : getPercentileBand(value / 100);
+    : getExposureRiskBand(value);
   const fillColor = provenance === "unavailable" || band === ""
     ? NEARBY_MAP_UNAVAILABLE_COLOR
     : MAP_BAND_COLORS[band] ?? NEARBY_MAP_UNAVAILABLE_COLOR;
@@ -127,6 +135,12 @@ export function getNearbyMapPointBand(
 
   if (criterionType === "categoryRate") {
     if (point.categoryPublicationStatus !== "published") return "";
+    if (point.categoryColorMode === "absolute-exposure") {
+      const exposureScore = point.categoryExposureScore === null
+        ? null
+        : Number(point.categoryExposureScore);
+      return getExposureRiskBand(exposureScore);
+    }
     return getPercentileBand(point.categoryPercentile);
   }
 
@@ -141,14 +155,12 @@ export function getNearbyMapPointBand(
       return "";
     }
 
-    return getPercentileBand(summary.value / 100);
+    return getExposureRiskBand(summary.value);
   }
 
   if (point.comparativeIndex.provenance === "unavailable") return "";
 
-  return getPercentileBand(
-    point.comparativeIndex.value === null ? null : point.comparativeIndex.value / 100
-  );
+  return getExposureRiskBand(point.comparativeIndex.value);
 }
 
 export function getNearbyMapPointColor(

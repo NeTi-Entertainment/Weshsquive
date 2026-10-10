@@ -136,6 +136,12 @@ describe("national map parameters", () => {
     expect(query.text).toContain("max(c.latitude) as north");
   });
 
+  it("provides the exposure score column when no category layer is selected", () => {
+    const query = buildNationalMapQuery(parseNationalMapParams(mapParams({ zoom: "8" })));
+
+    expect(query.text).toMatch(/null::text as publication_status,\s*null::numeric as category_exposure_score\s*\) map_category on true/);
+  });
+
   it("selects communes by visible polygon intersection and ranks matching published cohorts", () => {
     const query = buildNationalMapQuery(parseNationalMapParams(mapParams({
       zoom: "8",
@@ -156,9 +162,12 @@ describe("national map parameters", () => {
     expect(query.text).toContain("category.rate_denominator in ('population', 'housing')");
     expect(query.text).toContain("metrics.snapshot_id = active_snapshot.snapshot_id");
     expect(query.text).toContain("metrics.estimated_basket_category_count");
-    expect(query.text).toContain("metrics.comparable_basket_category_count");
+    expect(query.text).toContain("metrics.effective_basket_category_count");
+    expect(query.text).toContain("metrics.basket_index_coverage");
+    expect(query.text).toContain("metrics.low_volume_cap_applied");
     expect(query.text).toContain("metrics.estimated_availability_mask");
-    expect(query.text).toContain("metrics.minimum_reference_cohort_size");
+    expect(query.text).toContain("exposure_index_category_anchors");
+    expect(query.text).not.toContain("minimum_reference_cohort_size");
     expect(query.text).toContain("metrics.comparative_index_provenance");
     expect(query.text).toContain("metrics.basket_version");
     expect(query.text).not.toContain("coalesce(metrics.basket_version");
@@ -236,17 +245,16 @@ describe("national map parameters", () => {
     if (result.level !== "commune") throw new Error("Expected commune polygons");
     expect(result.communes[0].comparativeIndex).toEqual({
       value: 54,
-      status: "comparable",
+      status: "available",
       provenance: "partially-estimated",
-      completeness: "high",
-      basketVersion: "residential-risk-v2",
+      basketVersion: "absolute-exposure-v1",
       publishedComponentCount: 4,
       estimatedComponentCount: 2,
-      comparableComponentCount: 6,
-      minimumReferenceCohortSize: 150,
+      availableComponentCount: 6,
+      coverageRatio: 1,
+      lowVolumeCapApplied: false,
       basketCategoryCount: 6,
-      basketAvailability: partiallyEstimatedBasketAvailability,
-      populationBand: "100000-plus"
+      basketAvailability: partiallyEstimatedBasketAvailability
     });
     expect(result.communes[0].propertyMarket).toEqual({
         kind: "rent",
@@ -283,16 +291,16 @@ describe("national map parameters", () => {
           population: null,
           population_year: null,
           comparative_index: null,
-          comparative_index_status: "population-unavailable",
+          comparative_index_status: "unavailable",
           basket_version: null,
           published_basket_category_count: 0,
           estimated_basket_category_count: 0,
-          comparable_basket_category_count: 0,
-          minimum_reference_cohort_size: 0,
+          effective_basket_category_count: 0,
+          basket_index_coverage: "0",
+          low_volume_cap_applied: false,
           availability_mask: 0,
           estimated_availability_mask: 0,
           comparative_index_provenance: "unavailable",
-          population_band: null,
           published_category_count: 0,
           total_category_count: 15,
           coverage_ratio: "0",
@@ -306,7 +314,9 @@ describe("national map parameters", () => {
           insee_log: null,
           insee_log_millesime: null,
           publication_status: "masked",
-          category_percentile: null
+          category_percentile: null,
+          category_exposure_score: null,
+          category_color_mode: "percentile"
         }],
         rowCount: 1
       })
@@ -323,17 +333,16 @@ describe("national map parameters", () => {
     if (result.level !== "commune") throw new Error("Expected commune polygons");
     expect(result.communes[0].comparativeIndex).toEqual({
       value: null,
-      status: "population-unavailable",
+      status: "unavailable",
       provenance: "unavailable",
-      completeness: null,
       basketVersion: null,
       publishedComponentCount: 0,
       estimatedComponentCount: 0,
-      comparableComponentCount: 0,
-      minimumReferenceCohortSize: 0,
+      availableComponentCount: 0,
+      coverageRatio: 0,
+      lowVolumeCapApplied: false,
       basketCategoryCount: 6,
-      basketAvailability: unavailableBasketAvailability,
-      populationBand: null
+      basketAvailability: unavailableBasketAvailability
     });
     expect(result.communes[0]).toMatchObject({
       inseeCode: "33063",
@@ -479,16 +488,16 @@ function rawCityRow(overrides: Record<string, unknown> = {}) {
     population: 260958,
     population_year: 2023,
     comparative_index: 54,
-    comparative_index_status: "comparable",
-    basket_version: "residential-risk-v2",
+    comparative_index_status: "available",
+    basket_version: "absolute-exposure-v1",
     published_basket_category_count: 4,
     estimated_basket_category_count: 2,
-    comparable_basket_category_count: 6,
-    minimum_reference_cohort_size: 150,
+    effective_basket_category_count: 6,
+    basket_index_coverage: "1",
+    low_volume_cap_applied: false,
     availability_mask: 15,
     estimated_availability_mask: 48,
     comparative_index_provenance: "partially-estimated",
-    population_band: "100000-plus",
     published_category_count: 12,
     total_category_count: 15,
     coverage_ratio: "0.8",
@@ -503,6 +512,8 @@ function rawCityRow(overrides: Record<string, unknown> = {}) {
     insee_log_millesime: null,
     publication_status: null,
     category_percentile: null,
+    category_exposure_score: null,
+    category_color_mode: null,
     ...overrides
   };
 }

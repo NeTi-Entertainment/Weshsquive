@@ -28,10 +28,10 @@ import {
   formatPopulation,
   formatCategoryRate,
   formatComparativeIndex,
-  formatComparativeIndexPopulationBand,
   formatCoverage,
   getComparativeIndexClassName
 } from "@/client/city-search-ui";
+import { isExposureIndexCategory } from "@/shared/exposure-index";
 import { LatestRequest } from "@/client/latest-request";
 
 type NearbyCitiesPanelProps = {
@@ -310,7 +310,7 @@ export default function NearbyCitiesPanel({
       </form>
 
       <div className="nearby-toolbar">
-        <span>Indice relatif calculé par l’application; ce n’est pas un total officiel.</span>
+        <span>Indice d’exposition calculé par l’application; ce n’est pas une statistique officielle.</span>
         <div className="pager">
           <button
             type="button"
@@ -348,7 +348,7 @@ export default function NearbyCitiesPanel({
               onChange={(event) => selectMapCriterion(event.target.value)}
               disabled={loadState === "loading"}
             >
-              <option value="">Indice comparatif</option>
+              <option value="">Indice d’exposition</option>
               <optgroup label="Taux par catégorie">
                 {categories.map((category) => (
                   <option key={category.code} value={category.code}>{category.label}</option>
@@ -365,17 +365,30 @@ export default function NearbyCitiesPanel({
           </label>
         </div>
         <div className="nearby-map-legend" aria-label="Légende de la carte">
-          <span className="stat-band-very-low">0-20</span>
-          <span className="stat-band-low">20-40</span>
-          <span className="stat-band-medium">40-60</span>
-          <span className="stat-band-high">60-80</span>
-          <span className="stat-band-very-high">80-95</span>
-          <span className="stat-band-extreme">95-100</span>
+          {mapCriterion.type === "categoryRate" && selectedMapCategory && !isExposureIndexCategory(selectedMapCategory.code) ? (
+            <>
+              <span className="stat-band-very-low">0–20</span>
+              <span className="stat-band-low">20–40</span>
+              <span className="stat-band-medium">40–60</span>
+              <span className="stat-band-high">60–80</span>
+              <span className="stat-band-very-high">80–95</span>
+              <span className="stat-band-extreme">95–100</span>
+            </>
+          ) : (
+            <>
+              <span className="stat-band-very-low">0–10 Très faible</span>
+              <span className="stat-band-low">&gt;10–35 Faible</span>
+              <span className="stat-band-medium">&gt;35–50 Modérée</span>
+              <span className="stat-band-high">&gt;50–65 Élevée</span>
+              <span className="stat-band-very-high">&gt;65–85 Très élevée</span>
+              <span className="stat-band-extreme">&gt;85–100 Extrême</span>
+            </>
+          )}
           {mapCriterion.type !== "comparativeIndex" ? (
             <span className="map-band-unavailable">Non disponible</span>
           ) : null}
           {mapCriterion.type === "comparativeIndex" ? (
-            <div className="comparative-provenance-legend" aria-label="Provenance de l’indice comparatif">
+            <div className="comparative-provenance-legend" aria-label="Provenance de l’indice d’exposition">
               {comparativeIndexProvenanceLegend.map((provenance) => {
                 const visualStyle = getComparativeIndexVisualStyle(
                   provenance === "unavailable" ? null : 50,
@@ -403,10 +416,12 @@ export default function NearbyCitiesPanel({
         </div>
         <p className="nearby-map-method">
           {mapCriterion.type === "environmentalRisk"
-            ? `Indice environnemental calculé par l’application : moyenne pondérée des indices comparatifs des communes voisines dans un rayon de ${mapCriterion.radiusKm} km. Ce n’est ni une statistique officielle, ni un percentile environnemental, ni une mesure du risque individuel.`
+            ? `Indice environnemental calculé par l’application : moyenne pondérée des indices d’exposition des communes voisines dans un rayon de ${mapCriterion.radiusKm} km. Ce n’est ni une statistique officielle, ni un percentile environnemental, ni une mesure du risque individuel.`
             : selectedMapCategory
-              ? `Percentile national du taux publié pour ${selectedMapCategory.label}, à année, unité, base et tranche de population comparables.`
-              : "Indice relatif calculé par l’application : moyenne à poids égal des percentiles par catégorie. Le contour indique la provenance; les estimations utilisent le complément SSMSI départemental des valeurs masquées."}
+              ? isExposureIndexCategory(selectedMapCategory.code)
+                ? `Couleur sur l’échelle fixe de risque, calculée depuis le taux communal publié de ${selectedMapCategory.label}; les compléments estimatifs ne colorent pas ce calque.`
+                : `Percentile national du taux publié pour ${selectedMapCategory.label}, à année, unité, base et tranche de population comparables.`
+              : "Indice d’exposition calculé par l’application : moyenne à poids égal des scores fixes de taux par catégorie. Les compléments départementaux ne remplacent jamais les valeurs communales masquées."}
         </p>
         <p className="nearby-map-method">
           Carte de points communaux : elle ne colore ni les contours des communes ni une surface continue.
@@ -442,7 +457,7 @@ export default function NearbyCitiesPanel({
               <th>Département</th>
               <th>Population</th>
               <th>Couverture</th>
-              <th>Indice comparatif</th>
+              <th>Indice d’exposition</th>
               {selectedCategory ? <th>{selectedCategory.label}</th> : null}
             </tr>
           </thead>
@@ -482,7 +497,7 @@ export default function NearbyCitiesPanel({
                   <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance)}</span>
                   <span>{comparativeIndexComponentCountLabel(result.comparativeIndex)}</span>
                   <span>
-                    {formatComparativeIndexPopulationBand(result.comparativeIndex.populationBand)} · cohorte publiée minimale : {result.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(result.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
+                    {result.comparativeIndex.lowVolumeCapApplied ? "Plafond faible volume appliqué" : "Échelle fixe calibrée sur les taux 2025"}
                   </span>
                 </td>
                 {selectedCategory ? (

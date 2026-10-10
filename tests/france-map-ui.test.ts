@@ -122,22 +122,23 @@ describe("national map UI helpers", () => {
       populationYear: 2023,
       comparativeIndex: {
         value: 54,
-        status: "comparable" as const,
+        status: "available" as const,
         provenance: "published-only" as const,
-        completeness: "high" as const,
-        basketVersion: "residential-risk-v2",
+        basketVersion: "absolute-exposure-v1",
         publishedComponentCount: 6,
         estimatedComponentCount: 0,
-        comparableComponentCount: 6,
-        minimumReferenceCohortSize: 80,
+        availableComponentCount: 6,
+        coverageRatio: 1,
+        lowVolumeCapApplied: false,
         basketCategoryCount: 6,
-        basketAvailability: [],
-        populationBand: "100000-plus"
+        basketAvailability: []
       },
       categoryLabel: "Cambriolages",
       categoryIncidentCount: 12,
       categoryRatePer1000: "8.2",
       categoryPercentile: "0.9",
+      categoryExposureScore: null,
+      categoryColorMode: "percentile" as const,
       categoryCountUnit: "infractions",
       categoryRateDenominator: "housing" as const,
       categoryPopulationDenominator: null,
@@ -151,10 +152,10 @@ describe("national map UI helpers", () => {
 
     expect(getNationalMapPointColor(point, { type: "categoryRate", categoryCode: "B" }))
       .toBe("#c84b3f");
-    expect(getNationalMapPointColor(point, { type: "comparativeIndex" })).toBe("#f4e77d");
+    expect(getNationalMapPointColor(point, { type: "comparativeIndex" })).toBe("#eca154");
     expect(getNationalMapFeatureVisualStyle({ type: "commune", point }, {
       type: "comparativeIndex"
-    })).toMatchObject({ fillColor: "#f4e77d", dashArray: null });
+    })).toMatchObject({ fillColor: "#eca154", dashArray: null });
     expect(getNationalMapFeatureVisualStyle({
       type: "commune",
       point: {
@@ -175,7 +176,13 @@ describe("national map UI helpers", () => {
     })).toBe("#7b8794");
     expect(getNationalMapPointColor({
       ...point,
-      comparativeIndex: { ...point.comparativeIndex, value: null, status: "insufficient-coverage", provenance: "unavailable", completeness: null }
+      categoryPercentile: "0.99",
+      categoryExposureScore: "35",
+      categoryColorMode: "absolute-exposure"
+    }, { type: "categoryRate", categoryCode: "basket-category" })).toBe("#8fd19e");
+    expect(getNationalMapPointColor({
+      ...point,
+      comparativeIndex: { ...point.comparativeIndex, value: null, status: "unavailable", provenance: "unavailable" }
     }, {
       type: "comparativeIndex"
     })).toBe("#7b8794");

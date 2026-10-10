@@ -96,16 +96,16 @@ describe("buildCitySearchQuery", () => {
           total_category_count: 1,
           coverage_ratio: "0",
           comparative_index: 68,
-          comparative_index_status: "comparable",
-          basket_version: "residential-risk-v2",
+          comparative_index_status: "available",
+          basket_version: "absolute-exposure-v1",
           published_basket_category_count: 2,
           estimated_basket_category_count: 4,
-          comparable_basket_category_count: 6,
+          effective_basket_category_count: 6,
+          basket_index_coverage: "1",
+          low_volume_cap_applied: false,
           availability_mask: 3,
           estimated_availability_mask: 60,
-          minimum_reference_cohort_size: 80,
           comparative_index_provenance: "partially-estimated",
-          population_band: "1000-4999",
           categories: [category]
         }],
         rowCount: 1
@@ -115,12 +115,14 @@ describe("buildCitySearchQuery", () => {
     const [result] = await searchCities(db as never, { year: 2025, limit: 25, offset: 0 });
 
     expect(result.comparativeIndex).toMatchObject({
-      basketVersion: "residential-risk-v2",
+      basketVersion: "absolute-exposure-v1",
+      status: "available",
       provenance: "partially-estimated",
       publishedComponentCount: 2,
       estimatedComponentCount: 4,
-      comparableComponentCount: 6,
-      minimumReferenceCohortSize: 80
+      availableComponentCount: 6,
+      coverageRatio: 1,
+      lowVolumeCapApplied: false
     });
     expect(result.categories[0]).toEqual(category);
     expect(result.categories[0]).not.toHaveProperty("complementInfoNombre");
@@ -250,7 +252,7 @@ describe("buildCitySearchQuery", () => {
     expect(query.text).toContain("order by sort_category_rate_per_1000 desc nulls last");
   });
 
-  it("reads comparative scores and their cohort data from the derived view", () => {
+  it("reads exposure scores and coverage metadata from the active snapshot without cohort fields", () => {
     const query = buildCitySearchQuery({ year: 2025, limit: 25, offset: 0 });
 
     expect(query.text).toContain("search_metrics_city_year_comparative");
@@ -258,12 +260,15 @@ describe("buildCitySearchQuery", () => {
     expect(query.text).toContain("metrics.comparative_index");
     expect(query.text).not.toContain("metrics.comparative_index_confidence");
     expect(query.text).toContain("metrics.estimated_basket_category_count");
-    expect(query.text).toContain("metrics.comparable_basket_category_count");
+    expect(query.text).toContain("metrics.effective_basket_category_count");
+    expect(query.text).toContain("metrics.basket_index_coverage");
+    expect(query.text).toContain("metrics.low_volume_cap_applied");
     expect(query.text).toContain("metrics.estimated_availability_mask");
-    expect(query.text).toContain("metrics.minimum_reference_cohort_size");
     expect(query.text).toContain("metrics.comparative_index_provenance");
     expect(query.text).toContain("metrics.basket_version");
     expect(query.text).not.toContain("coalesce(metrics.basket_version");
+    expect(query.text).not.toContain("metrics.population_band");
+    expect(query.text).not.toContain("minimum_reference_cohort_size");
     expect(query.text).not.toContain("percent_rank()");
     expect(query.text).not.toMatch(/published_incident_count|partial_rate_per_1000/i);
   });

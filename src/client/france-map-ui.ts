@@ -34,6 +34,7 @@ export type NationalMapFeature =
       point: Pick<
         NationalMapPoint,
         "comparativeIndex" | "categoryPercentile" | "categoryPublicationStatus" | "environmentalRisk" | "propertyMarket"
+        | "categoryExposureScore" | "categoryColorMode"
       >;
     };
 type NationalMapColorPoint = Extract<NationalMapFeature, { type: "commune" }>["point"];

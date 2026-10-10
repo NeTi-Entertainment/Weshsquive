@@ -11,7 +11,6 @@ import {
   formatCoverage,
   formatInteger,
   formatPopulation,
-  formatComparativeIndexPopulationBand,
   formatRate,
   formatComparisonCoverage,
   getComparativeIndexClassName
@@ -138,7 +137,7 @@ export default async function CityDetailPage({ params, searchParams }: CityDetai
           title={`${describeComparativeIndex(city.comparativeIndex)} ${describeBasketAvailability(city.comparativeIndex.basketAvailability)}`}
           aria-label={`Indice ${formatComparativeIndex(city.comparativeIndex.value)}. ${describeComparativeIndex(city.comparativeIndex)} ${describeBasketAvailability(city.comparativeIndex.basketAvailability)}`}
         >
-          <span>Indice relatif calculé par l’application</span>
+          <span>Indice d’exposition calculé par l’application · {city.year}</span>
           <strong>{formatComparativeIndex(city.comparativeIndex.value)}</strong>
           <small>
             {comparativeIndexProvenanceLabel(city.comparativeIndex.provenance)}
@@ -146,10 +145,8 @@ export default async function CityDetailPage({ params, searchParams }: CityDetai
           <small>
             {comparativeIndexComponentCountLabel(city.comparativeIndex)}
           </small>
-          <small>
-            {formatComparativeIndexPopulationBand(city.comparativeIndex.populationBand)} · cohorte publiée minimale : {city.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(city.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
-          </small>
-          <small>Percentiles par catégorie; ce n’est pas un total officiel.</small>
+          {city.comparativeIndex.lowVolumeCapApplied ? <small>Plafond faible volume appliqué</small> : null}
+          <small>Échelle fixe fondée sur les taux par catégorie; ce n’est pas une statistique officielle.</small>
         </article>
       </section>
 

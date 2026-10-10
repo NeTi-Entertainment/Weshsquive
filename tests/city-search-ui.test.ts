@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildCitySearchUrl,
   collectCategoryColumns,
-  comparativeIndexCompletenessLabel,
   comparativeIndexComponentCountLabel,
   comparativeIndexProvenanceLabel,
   comparativeIndexStatusLabel,
@@ -17,6 +16,7 @@ import {
   formatPopulation,
   formatRate,
   getPercentileBand,
+  getComparativeIndexClassName,
   getNextOffset,
   getPreviousOffset,
   getSortStateForColumn,
@@ -24,14 +24,6 @@ import {
   updateSortForColumn,
   type CitySearchResult
 } from "../src/client/city-search-ui";
-
-describe("comparativeIndexCompletenessLabel", () => {
-  it("describes basket completeness without claiming statistical confidence", () => {
-    expect(comparativeIndexCompletenessLabel("high")).toBe("Complétude de l’indice : élevée");
-    expect(comparativeIndexCompletenessLabel("medium")).toBe("Complétude de l’indice : moyenne");
-    expect(comparativeIndexCompletenessLabel("low")).toBe("Complétude de l’indice : faible");
-  });
-});
 
 describe("comparative index provenance presentation", () => {
   it("uses the four approved French provenance labels", () => {
@@ -48,46 +40,45 @@ describe("comparative index provenance presentation", () => {
     ]);
   });
 
-  it("qualifies the score with component counts, population band and published reference size", () => {
+  it("qualifies the score with basket coverage and estimation provenance, not a population cohort", () => {
     expect(describeComparativeIndex({
       value: 60,
-      status: "comparable",
+      status: "available",
       provenance: "partially-estimated",
-      completeness: "high",
-      basketVersion: "residential-risk-v2",
+      basketVersion: "absolute-exposure-v1",
       publishedComponentCount: 3,
       estimatedComponentCount: 3,
-      comparableComponentCount: 6,
-      minimumReferenceCohortSize: 50,
+      availableComponentCount: 6,
+      coverageRatio: 1,
+      lowVolumeCapApplied: true,
       basketCategoryCount: 6,
-      basketAvailability: [],
-      populationBand: "1000-4999"
+      basketAvailability: []
     })).toBe(
-      "Partiellement estimé · Composantes disponibles dans le panier : 3 publiées, 3 estimées · composantes effectivement comparées dans l’indice : 6 · tranche 1 000 à 4 999 habitants · cohorte publiée minimale : 50 communes. Les valeurs estimées sont des moyennes départementales SSMSI des communes masquées, pas des statistiques communales publiées."
+      "Partiellement estimé · Couverture du panier : 6/6 composantes exploitables (3 publiées, 3 estimées) Les valeurs estimées sont des moyennes départementales SSMSI des communes masquées, pas des statistiques communales publiées. Le score a été plafonné à 35 selon la règle de faible volume publiée."
     );
   });
 
-  it("does not imply available components were all comparable", () => {
+  it("describes the number of usable components as basket coverage", () => {
     expect(comparativeIndexComponentCountLabel({
       value: null,
-      status: "population-unavailable",
+      status: "unavailable",
       provenance: "unavailable",
-      completeness: null,
-      basketVersion: "residential-risk-v2",
+      basketVersion: "absolute-exposure-v1",
       publishedComponentCount: 6,
       estimatedComponentCount: 0,
-      comparableComponentCount: 0,
-      minimumReferenceCohortSize: 0,
+      availableComponentCount: 0,
+      coverageRatio: 0,
+      lowVolumeCapApplied: false,
       basketCategoryCount: 6,
-      basketAvailability: [],
-      populationBand: null
-    })).toBe("Composantes disponibles dans le panier : 6 publiées, 0 estimées · composantes effectivement comparées dans l’indice : 0");
+      basketAvailability: []
+    })).toBe("Couverture du panier : 0/6 composantes exploitables (6 publiées, 0 estimées)");
   });
 });
 
 describe("comparativeIndexStatusLabel", () => {
-  it("keeps the transitional cohort status readable while exposing the v2 status", () => {
-    expect(comparativeIndexStatusLabel("reference-cohort-too-small")).toBe("Groupe trop petit");
+  it("uses neutral statuses that no longer imply relative comparability", () => {
+    expect(comparativeIndexStatusLabel("available")).toBe("Score disponible");
+    expect(comparativeIndexStatusLabel("unavailable")).toBe("Aucune composante exploitable");
   });
 });
 
@@ -151,19 +142,18 @@ describe("collectCategoryColumns", () => {
       },
       comparativeIndex: {
         value: 80,
-        status: "comparable",
+        status: "available",
         provenance: "partially-estimated",
-        completeness: "high",
-        basketVersion: "residential-risk-v2",
+        basketVersion: "absolute-exposure-v1",
         publishedComponentCount: 3,
         estimatedComponentCount: 1,
-        comparableComponentCount: 6,
-        minimumReferenceCohortSize: 42,
+        availableComponentCount: 4,
+        coverageRatio: 4 / 6,
+        lowVolumeCapApplied: false,
         basketCategoryCount: 4,
         basketAvailability: [
           { code: "cambriolages", label: "Cambriolages", available: true, estimated: false }
-        ],
-        populationBand: "1000-2499"
+        ]
       },
       categories: [
         {
@@ -210,17 +200,16 @@ describe("collectCategoryColumns", () => {
       },
       comparativeIndex: {
         value: null,
-        status: "insufficient-coverage",
+        status: "unavailable",
         provenance: "unavailable",
-        completeness: null,
-        basketVersion: "residential-risk-v2",
+        basketVersion: "absolute-exposure-v1",
         publishedComponentCount: 0,
         estimatedComponentCount: 0,
-        comparableComponentCount: 0,
-        minimumReferenceCohortSize: 0,
+        availableComponentCount: 0,
+        coverageRatio: 0,
+        lowVolumeCapApplied: false,
         basketCategoryCount: 4,
-        basketAvailability: [],
-        populationBand: null
+        basketAvailability: []
       },
       categories: [
         {
@@ -350,5 +339,13 @@ describe("percentile color helpers", () => {
     expect(getStatCellClassName("0.98", "muted-cell")).toBe(
       "muted-cell stat-cell stat-band-extreme"
     );
+  });
+
+  it("colors the exposure score on the absolute application scale", () => {
+    expect(getComparativeIndexClassName(0)).toBe("stat-cell stat-band-very-low");
+    expect(getComparativeIndexClassName(10)).toBe("stat-cell stat-band-very-low");
+    expect(getComparativeIndexClassName(35.1)).toBe("stat-cell stat-band-medium");
+    expect(getComparativeIndexClassName(65.1)).toBe("stat-cell stat-band-very-high");
+    expect(getComparativeIndexClassName(null)).toBe("");
   });
 });

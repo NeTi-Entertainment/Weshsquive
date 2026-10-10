@@ -122,6 +122,11 @@ try {
         -Expected "1" `
         -Message "The ordered migration runner did not register migration 007 on a fresh database"
 
+    Assert-SqlEquals `
+        -Sql "select count(*) from schema_migrations where migration_name = '008_absolute_exposure_index.sql';" `
+        -Expected "1" `
+        -Message "The ordered migration runner did not register migration 008 on a fresh database"
+
     docker exec -e PGPASSWORD=postgres $ContainerName `
         createdb -U postgres $UpgradeDatabaseName
 
@@ -161,14 +166,30 @@ try {
         -Message "The ordered migration runner did not register migration 007 on an upgraded database"
 
     Assert-SqlEquals `
+        -TargetDatabase $UpgradeDatabaseName `
+        -Sql "select count(*) from schema_migrations where migration_name = '008_absolute_exposure_index.sql';" `
+        -Expected "1" `
+        -Message "The ordered migration runner did not register migration 008 on an upgraded database"
+
+    Assert-SqlEquals `
         -Sql "select count(*) from pg_extension where extname in ('postgis','postgis_topology');" `
         -Expected "2" `
         -Message "PostGIS extensions are not installed"
 
     Assert-SqlEquals `
-        -Sql "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('regions','departments','cities','crime_categories','crime_stats','population_history','import_batches','search_metric_snapshots','search_metrics_active','search_metrics_city_year_category','search_metrics_city_year_comparative','property_sale_observations','property_rent_observations','property_market_metrics');" `
-        -Expected "14" `
+        -Sql "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('regions','departments','cities','crime_categories','crime_stats','population_history','import_batches','search_metric_snapshots','search_metrics_active','search_metrics_city_year_category','search_metrics_city_year_comparative','property_sale_observations','property_rent_observations','property_market_metrics','exposure_index_category_anchors');" `
+        -Expected "15" `
         -Message "Core and derived search metric tables are missing"
+
+    Assert-SqlEquals `
+        -Sql "select count(*) from information_schema.columns where table_name='search_metrics_city_year_comparative' and column_name='comparative_index' and data_type='numeric' and numeric_precision=5 and numeric_scale=1;" `
+        -Expected "1" `
+        -Message "The comparative snapshot must retain one decimal place for the exposure index"
+
+    Assert-SqlEquals `
+        -Sql "select count(*) from exposure_index_category_anchors where calibration_year=2025;" `
+        -Expected "6" `
+        -Message "All six fixed exposure calibrations must be installed"
 
     Assert-SqlEquals `
         -Sql "select count(*) from pg_constraint where conname in ('property_sale_observations_pkey','property_rent_observations_pkey','property_market_metrics_pkey','property_market_metric_type_check','property_market_publication_check');" `
@@ -226,14 +247,14 @@ try {
         -Message "The auditable comparative component view is missing"
 
     Assert-SqlEquals `
-        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_components' and column_name in ('city_insee_code','year','category_code','population_band','component_source','effective_rate_per_1000','reference_cohort_size','category_percentile');" `
-        -Expected "8" `
-        -Message "The comparative component view does not expose its audit contract"
+        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_components' and column_name in ('city_insee_code','year','category_code','availability_bit','anchored_rate_denominator','anchored_count_unit','anchor_rate_per_1000','component_source','effective_rate_per_1000','component_exposure_score');" `
+        -Expected "10" `
+        -Message "The absolute exposure component view does not expose its audit contract"
 
     Assert-SqlEquals `
-        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_metrics' and column_name in ('estimated_basket_category_count','comparable_basket_category_count','estimated_availability_mask','minimum_reference_cohort_size','comparative_index_provenance','comparative_index_status','comparative_index','basket_version');" `
-        -Expected "8" `
-        -Message "The comparative metrics view does not expose all v2 fields"
+        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_metrics' and column_name in ('published_basket_category_count','estimated_basket_category_count','effective_basket_category_count','basket_index_coverage','low_volume_cap_applied','estimated_availability_mask','comparative_index_provenance','comparative_index_status','comparative_index','basket_version');" `
+        -Expected "10" `
+        -Message "The comparative metrics view does not expose the absolute exposure contract"
 
     Invoke-Psql -Sql @"
 insert into regions(code, name) values ('11', 'Ile-de-France');
@@ -254,14 +275,14 @@ select 'B0999', 2025, id, 'unknown', 'fixture' from crime_categories where code 
 "@ | Out-Null
 
     Assert-SqlEquals `
-        -Sql "select string_agg(reference_population || ':' || population_band, ',' order by reference_population) from cities join city_year_comparative_metrics on city_insee_code=insee_code and year=2025 where source is null and insee_code like 'B%';" `
-        -Expected "999:under-1000,1000:1000-4999,4999:1000-4999,5000:5000-9999,9999:5000-9999,10000:10000-49999,49999:10000-49999,50000:50000-plus,100000:50000-plus" `
-        -Message "Comparative metrics must use the five v2 population bands at every boundary"
+        -Sql "select count(*) from city_year_comparative_metrics where city_insee_code like 'B%' and year=2025;" `
+        -Expected "9" `
+        -Message "Absolute exposure metrics must not require a population cohort"
 
     Assert-SqlEquals `
         -Sql "select count(distinct basket_version) || ':' || min(basket_version) from city_year_comparative_metrics where year=2025;" `
-        -Expected "1:residential-risk-v2" `
-        -Message "Comparative metrics must expose only the v2 basket version"
+        -Expected "1:absolute-exposure-v1" `
+        -Message "Comparative metrics must expose the fixed absolute exposure formula version"
 
     Write-Host "Database schema test passed."
 }

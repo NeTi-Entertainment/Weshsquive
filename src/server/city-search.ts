@@ -243,22 +243,15 @@ city_metrics as (
     metrics.coverage_ratio,
     coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
     coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
-    coalesce(metrics.comparable_basket_category_count, 0) as comparable_basket_category_count,
-    coalesce(metrics.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
+    coalesce(metrics.effective_basket_category_count, 0) as effective_basket_category_count,
+    metrics.basket_index_coverage,
+    coalesce(metrics.low_volume_cap_applied, false) as low_volume_cap_applied,
     coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
     coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
     metrics.comparative_index,
     metrics.availability_mask,
-    coalesce(
-      metrics.comparative_index_status,
-      case
-        when metrics.population is null or metrics.population <= 0
-          then 'population-unavailable'
-        else 'insufficient-coverage'
-      end
-    ) as comparative_index_status,
+    coalesce(metrics.comparative_index_status, 'unavailable') as comparative_index_status,
     metrics.basket_version,
-    metrics.population_band,
     sort_metrics.sort_category_incident_count,
     sort_metrics.sort_category_rate_per_1000
   from active_snapshot
@@ -375,7 +368,7 @@ export async function searchCities(
     population: row.population,
     populationYear: row.population_year,
     published: mapPublishedMetrics(row),
-    comparativeIndex: mapComparativeIndex(row, row.population),
+    comparativeIndex: mapComparativeIndex(row),
     categories: row.categories
   }));
 }

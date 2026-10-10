@@ -92,19 +92,16 @@ select tc.*,
   coalesce(tm.published_category_count, 0) as published_category_count,
   coalesce(tm.total_category_count, 0) as total_category_count,
   tm.coverage_ratio, tm.comparative_index,
-  coalesce(tm.comparative_index_status,
-    case when tc.population is null or tc.population <= 0
-      then 'population-unavailable' else 'insufficient-coverage' end
-  ) as comparative_index_status,
+  coalesce(tm.comparative_index_status, 'unavailable') as comparative_index_status,
   tm.availability_mask,
   coalesce(tm.estimated_availability_mask, 0) as estimated_availability_mask,
   tm.basket_version,
   coalesce(tm.published_basket_category_count, 0) as published_basket_category_count,
   coalesce(tm.estimated_basket_category_count, 0) as estimated_basket_category_count,
-  coalesce(tm.comparable_basket_category_count, 0) as comparable_basket_category_count,
-  coalesce(tm.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
+  coalesce(tm.effective_basket_category_count, 0) as effective_basket_category_count,
+  tm.basket_index_coverage,
+  coalesce(tm.low_volume_cap_applied, false) as low_volume_cap_applied,
   coalesce(tm.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
-  tm.population_band,
   coalesce(category_data.categories, '[]'::jsonb) as categories
 from target_city tc
 left join target_metrics tm on true
@@ -361,7 +358,7 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
     latitude: row.latitude === null ? null : Number(row.latitude),
     longitude: row.longitude === null ? null : Number(row.longitude),
     population: row.population, populationYear: row.population_year, year: params.year,
-    published: mapPublishedMetrics(row), comparativeIndex: mapComparativeIndex(row, row.population),
+    published: mapPublishedMetrics(row), comparativeIndex: mapComparativeIndex(row),
     categories: row.categories, comparisons: Array.from(comparisonsMap.values()),
     historyByCategory, selectedHistoryCategoryCode, environmentalRisk
   };

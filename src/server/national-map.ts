@@ -88,6 +88,8 @@ export type NationalMapPoint = {
   categoryIncidentCount: number | null;
   categoryRatePer1000: string | null;
   categoryPercentile: string | null;
+  categoryExposureScore: string | null;
+  categoryColorMode: "absolute-exposure" | "percentile" | null;
   categoryCountUnit: string | null;
   categoryRateDenominator: "population" | "housing" | "unknown";
   categoryPopulationDenominator: number | null;
@@ -346,6 +348,7 @@ map_category_rates as (
     category.count_unit,
     category.rate_denominator,
     category.rate_per_1000,
+    anchor.category_code is not null as is_absolute_exposure_category,
     percent_rank() over (
       partition by metrics.population_band, category.count_unit, category.rate_denominator
       order by category.rate_per_1000
@@ -359,11 +362,13 @@ map_category_rates as (
     on metrics.snapshot_id = active_snapshot.snapshot_id
    and metrics.city_insee_code = category.city_insee_code
    and metrics.year = category.year
+  left join exposure_index_category_anchors anchor
+    on anchor.category_code = category.category_code
   where category.publication_status = 'published'
     and category.rate_per_1000 is not null
     and category.count_unit is not null
     and category.rate_denominator in ('population', 'housing')
-    and metrics.population_band is not null
+    and (anchor.category_code is not null or metrics.population_band is not null)
 )`
     : "";
   const mapCategoryJoin = mapCategoryPlaceholder
@@ -376,6 +381,7 @@ map_category_rates as (
     on map_percentile.city_insee_code = c.insee_code`
     : `left join lateral (
     select null::text as category_label,
+      null::text as category_code,
       null::integer as incident_count,
       null::numeric as rate_per_1000,
       null::text as count_unit,
@@ -384,10 +390,13 @@ map_category_rates as (
       null::smallint as insee_pop_millesime,
       null::bigint as insee_log,
       null::smallint as insee_log_millesime,
-      null::text as publication_status
+      null::text as publication_status,
+      null::numeric as category_exposure_score
   ) map_category on true
   left join lateral (
-    select null::numeric as category_percentile
+    select null::numeric as category_percentile,
+      null::numeric as category_exposure_score,
+      false as is_absolute_exposure_category
   ) map_percentile on true`;
   const propertyMarketJoin = propertyMarketSelection && propertyMarketKindPlaceholder && propertyMarketTypePlaceholder
     ? buildPropertyMarketSelection({
@@ -442,20 +451,16 @@ select
   metrics.total_category_count,
   metrics.coverage_ratio,
   metrics.comparative_index,
-  coalesce(
-    metrics.comparative_index_status,
-    case when metrics.population is null or metrics.population <= 0
-      then 'population-unavailable' else 'insufficient-coverage' end
-  ) as comparative_index_status,
+  coalesce(metrics.comparative_index_status, 'unavailable') as comparative_index_status,
   metrics.basket_version,
   coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
   coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
-  coalesce(metrics.comparable_basket_category_count, 0) as comparable_basket_category_count,
-  coalesce(metrics.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
+  coalesce(metrics.effective_basket_category_count, 0) as effective_basket_category_count,
+  metrics.basket_index_coverage,
+  coalesce(metrics.low_volume_cap_applied, false) as low_volume_cap_applied,
   coalesce(metrics.availability_mask, 0) as availability_mask,
   coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
   coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
-  metrics.population_band,
   map_category.category_label,
   map_category.incident_count,
   map_category.rate_per_1000,
@@ -467,6 +472,10 @@ select
   map_category.insee_log_millesime,
   map_category.publication_status,
   map_percentile.category_percentile,
+  map_category.category_exposure_score,
+  case when map_anchor.category_code is not null then 'absolute-exposure'
+       when map_category.category_code is not null then 'percentile'
+       else null end as category_color_mode,
   ${PROPERTY_MARKET_SELECT_COLUMNS}
 from cities c
 join departments d on d.code = c.department_code
@@ -477,6 +486,8 @@ left join search_metrics_city_year_comparative metrics
  and metrics.city_insee_code = c.insee_code
  and metrics.year = ${yearPlaceholder}
 ${mapCategoryJoin}
+left join exposure_index_category_anchors map_anchor
+  on map_anchor.category_code = map_category.category_code
 ${propertyMarketJoin}
 where ${[...visibleFilters, ...cityFilters].join("\n  and ")}
 order by c.name, c.insee_code
@@ -532,6 +543,8 @@ type RawNationalMapPoint = {
   insee_log_millesime: number | null;
   publication_status: "published" | "masked" | "unknown" | null;
   category_percentile: string | null;
+  category_exposure_score: string | null;
+  category_color_mode: "absolute-exposure" | "percentile" | null;
 } & ComparativeIndexColumns & PublishedMetricsColumns & RawPropertyMarketColumns;
 
 type RawMapEnvironmentalRiskRow = {
@@ -578,7 +591,7 @@ export async function searchNationalMap(
   const visibleFeatureCount = Number(result.rows[0]?.visible_feature_count ?? 0);
   const requiresZoom = visibleFeatureCount > NATIONAL_MAP_MAX_COMMUNE_FEATURES;
   const communes: NationalMapCommune[] = requiresZoom ? [] : result.rows.map((row) => {
-    const comparative = mapComparativeIndex(row, row.population);
+    const comparative = mapComparativeIndex(row);
     return {
       inseeCode: row.insee_code,
       name: row.name,
@@ -596,6 +609,8 @@ export async function searchNationalMap(
       categoryIncidentCount: row.incident_count,
       categoryRatePer1000: row.rate_per_1000,
       categoryPercentile: row.category_percentile,
+      categoryExposureScore: row.category_exposure_score,
+      categoryColorMode: row.category_color_mode,
       categoryCountUnit: row.count_unit,
       categoryRateDenominator: row.rate_denominator,
       categoryPopulationDenominator: row.insee_pop === null ? null : Number(row.insee_pop),
