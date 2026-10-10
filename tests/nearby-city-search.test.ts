@@ -13,6 +13,20 @@ const params = parseNearbyCitySearchParams("95594", new URLSearchParams({
   offset: "1000"
 }));
 
+const partiallyEstimatedBasketAvailability = [
+  { code: "ssmsi-78384436563146dc6167ea53b7b5e0cd", label: "Cambriolages de logement", available: true, estimated: false },
+  { code: "ssmsi-74a195792dd119f60822e61df3587522", label: "Vols de véhicule", available: true, estimated: false },
+  { code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928", label: "Vols dans les véhicules", available: true, estimated: false },
+  { code: "ssmsi-bf6b19b3e53b90f6594ec2e8303c5778", label: "Destructions et dégradations volontaires", available: true, estimated: false },
+  { code: "ssmsi-a2601b900aa009440624697e1d74e4a9", label: "Violences physiques hors cadre familial", available: true, estimated: true },
+  { code: "ssmsi-bdbeb8ca73503f8264dab16159795328", label: "Trafic de stupéfiants", available: true, estimated: true }
+];
+
+const estimatedOnlyBasketAvailability = partiallyEstimatedBasketAvailability.map((category) => ({
+  ...category,
+  estimated: true
+}));
+
 describe("nearby city search", () => {
   it("rejects environmental radii outside the supported set", () => {
     expect(() => parseNearbyCitySearchParams("95594", new URLSearchParams({
@@ -36,7 +50,7 @@ describe("nearby city search", () => {
 
   it("keeps the filtered total when the requested page has no rows", async () => {
     const query = buildNearbyCitySearchQuery(params);
-    const mapPoint = {
+    const rawMapPoint = {
       inseeCode: "95584",
       name: "Seugy",
       latitude: 49.121,
@@ -44,9 +58,17 @@ describe("nearby city search", () => {
       distanceKm: 12.5,
       population: 1044,
       populationYear: 2023,
-      comparativeIndex: 82,
-      comparativeIndexStatus: "comparable",
-      comparativeIndexCompleteness: "high",
+      comparative_index: 82,
+      comparative_index_status: "comparable",
+      basket_version: "residential-risk-v2",
+      published_basket_category_count: 4,
+      estimated_basket_category_count: 2,
+      comparable_basket_category_count: 6,
+      availability_mask: 15,
+      estimated_availability_mask: 48,
+      minimum_reference_cohort_size: 75,
+      comparative_index_provenance: "partially-estimated",
+      population_band: "1000-4999",
       categoryLabel: null,
       categoryRatePer1000: null,
       categoryPercentile: null,
@@ -62,7 +84,7 @@ describe("nearby city search", () => {
           origin_exists: true,
           insee_code: null,
           total_count: 237,
-          map_points: [mapPoint]
+          map_points: [rawMapPoint]
         }],
         rowCount: 1
       })
@@ -75,7 +97,38 @@ describe("nearby city search", () => {
     await expect(searchNearbyCities(db as never, params)).resolves.toEqual({
       totalCount: 237,
       results: [],
-      mapPoints: [{ ...mapPoint, environmentalRisk: null }]
+      mapPoints: [{
+        inseeCode: "95584",
+        name: "Seugy",
+        latitude: 49.121,
+        longitude: 2.391,
+        distanceKm: 12.5,
+        population: 1044,
+        populationYear: 2023,
+        comparativeIndex: {
+          value: 82,
+          status: "comparable",
+          provenance: "partially-estimated",
+          completeness: "high",
+          basketVersion: "residential-risk-v2",
+          publishedComponentCount: 4,
+          estimatedComponentCount: 2,
+          comparableComponentCount: 6,
+          minimumReferenceCohortSize: 75,
+          basketCategoryCount: 6,
+          basketAvailability: partiallyEstimatedBasketAvailability,
+          populationBand: "1000-4999"
+        },
+        categoryLabel: null,
+        categoryRatePer1000: null,
+        categoryPercentile: null,
+        categoryCountUnit: null,
+        categoryRateDenominator: "unknown",
+        categoryPopulationDenominatorYear: null,
+        categoryHousingDenominatorYear: null,
+        categoryPublicationStatus: null,
+        environmentalRisk: null
+      }]
     });
     expect(db.query).toHaveBeenCalledTimes(1);
   });
@@ -132,6 +185,7 @@ describe("nearby city search", () => {
     expect(batchSql).toContain("unnest($1::varchar[])");
     expect(batchSql).toContain("metrics.year = $2");
     expect(batchSql).toContain("metrics.snapshot_id = $3");
+    expect(batchSql).toContain("metrics.comparative_index_provenance");
     expect(batchSql).toContain("st_dwithin");
     expect(batchSql).not.toContain("population_min");
     expect(batchSql).not.toContain("limit 10");
@@ -140,8 +194,12 @@ describe("nearby city search", () => {
       radiusKm: 25,
       value: 40,
       status: "comparable",
+      provenance: "published-only",
       scoredNeighborCount: 3,
-      totalNeighborCount: 4
+      totalNeighborCount: 4,
+      publishedOnlyNeighborCount: 3,
+      partiallyEstimatedNeighborCount: 0,
+      estimatedOnlyNeighborCount: 0
     });
     expect(result.mapPoints[0].environmentalRisk?.weightedCoverageRatio).toBeCloseTo(
       2.1 / 3.02
@@ -152,8 +210,12 @@ describe("nearby city search", () => {
     expect(result.mapPoints[2].environmentalRisk).toMatchObject({
       value: 50,
       status: "comparable",
+      provenance: "published-only",
       scoredNeighborCount: 3,
       totalNeighborCount: 3,
+      publishedOnlyNeighborCount: 3,
+      partiallyEstimatedNeighborCount: 0,
+      estimatedOnlyNeighborCount: 0,
       weightedCoverageRatio: 1
     });
   });
@@ -243,6 +305,95 @@ describe("nearby city search", () => {
     expect(query.text).toContain("origin_status as (");
     expect(query.text).toContain("as origin_exists");
     expect(query.text).toContain("from origin_status\ncross join filtered_count");
+    expect(query.text).toContain("metrics.estimated_basket_category_count");
+    expect(query.text).toContain("metrics.comparable_basket_category_count");
+    expect(query.text).toContain("metrics.estimated_availability_mask");
+    expect(query.text).toContain("metrics.minimum_reference_cohort_size");
+    expect(query.text).toContain("metrics.comparative_index_provenance");
+    expect(query.text).toContain("metrics.basket_version");
+    expect(query.text).not.toContain("coalesce(metrics.basket_version");
+    expect(query.text).not.toContain("complement_info_nombre");
+    expect(query.text).not.toContain("complement_info_taux");
+  });
+
+  it("maps v2 provenance and keeps a masked selected category null", async () => {
+    const selectedParams = parseNearbyCitySearchParams("95594", new URLSearchParams({
+      year: "2025",
+      radiusKm: "25",
+      categoryCode: "ssmsi-example",
+      limit: "10",
+      offset: "0"
+    }));
+    const db = {
+      query: async () => ({
+        rows: [{
+          origin_exists: true,
+          snapshot_id: "snapshot-17",
+          insee_code: "95584",
+          name: "Seugy",
+          department_code: "95",
+          department_name: "Val-d'Oise",
+          region_code: "11",
+          region_name: "Ile-de-France",
+          latitude: "49.121",
+          longitude: "2.391",
+          distance_km: "12.5",
+          population: 1044,
+          population_year: 2023,
+          published_category_count: 0,
+          total_category_count: 1,
+          coverage_ratio: "0",
+          comparative_index: 71,
+          comparative_index_status: "comparable",
+          basket_version: "residential-risk-v2",
+          published_basket_category_count: 0,
+          estimated_basket_category_count: 6,
+          comparable_basket_category_count: 6,
+          availability_mask: 0,
+          estimated_availability_mask: 63,
+          minimum_reference_cohort_size: 61,
+          comparative_index_provenance: "estimated-only",
+          population_band: "1000-4999",
+          selected_category_label: "Exemple masqué",
+          selected_category_incident_count: null,
+          selected_category_rate_per_1000: null,
+          selected_category_publication_status: "masked",
+          selected_category_count_unit: "faits",
+          selected_category_rate_denominator: "population",
+          selected_category_population_denominator: "1044",
+          selected_category_population_denominator_year: 2023,
+          selected_category_housing_denominator: null,
+          selected_category_housing_denominator_year: null,
+          total_count: 1,
+          map_points: []
+        }],
+        rowCount: 1
+      })
+    };
+
+    const result = await searchNearbyCities(db as never, selectedParams);
+
+    expect(result.results[0].comparativeIndex).toEqual({
+      value: 71,
+      status: "comparable",
+      provenance: "estimated-only",
+      completeness: "high",
+      basketVersion: "residential-risk-v2",
+      publishedComponentCount: 0,
+      estimatedComponentCount: 6,
+      comparableComponentCount: 6,
+      minimumReferenceCohortSize: 61,
+      basketCategoryCount: 6,
+      basketAvailability: estimatedOnlyBasketAvailability,
+      populationBand: "1000-4999"
+    });
+    expect(result.results[0].selectedCategory).toMatchObject({
+      publicationStatus: "masked",
+      incidentCount: null,
+      ratePer1000: null
+    });
+    expect(result.results[0].selectedCategory).not.toHaveProperty("complementInfoNombre");
+    expect(result.results[0].selectedCategory).not.toHaveProperty("complementInfoTaux");
   });
 
   it("rejects an unknown origin instead of returning an empty result", async () => {
@@ -268,9 +419,17 @@ function makeMapPoint(inseeCode: string) {
     distanceKm: 12.5,
     population: 1044,
     populationYear: 2023,
-    comparativeIndex: 82,
-    comparativeIndexStatus: "comparable",
-    comparativeIndexCompleteness: "high",
+    comparative_index: 82,
+    comparative_index_status: "comparable",
+    basket_version: "residential-risk-v2",
+    published_basket_category_count: 4,
+    estimated_basket_category_count: 2,
+    comparable_basket_category_count: 6,
+    availability_mask: 15,
+    estimated_availability_mask: 48,
+    minimum_reference_cohort_size: 75,
+    comparative_index_provenance: "partially-estimated",
+    population_band: "1000-4999",
     categoryLabel: null,
     categoryRatePer1000: null,
     categoryPercentile: null,
@@ -293,6 +452,7 @@ function environmentalRow(
     target_coordinates_available: true,
     neighbor_insee_code: neighborInseeCode,
     distance_km: distanceKm,
-    comparative_index: comparativeIndex
+    comparative_index: comparativeIndex,
+    comparative_index_provenance: comparativeIndex === null ? "unavailable" : "published-only"
   };
 }

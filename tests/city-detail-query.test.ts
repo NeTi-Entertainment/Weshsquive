@@ -22,6 +22,15 @@ describe("city detail queries", () => {
     expect(query.text).toContain("count_unit");
     expect(query.text).toContain("rate_denominator");
     expect(query.text).toContain("category_code");
+    expect(query.text).toContain("tm.estimated_basket_category_count");
+    expect(query.text).toContain("tm.comparable_basket_category_count");
+    expect(query.text).toContain("tm.estimated_availability_mask");
+    expect(query.text).toContain("tm.minimum_reference_cohort_size");
+    expect(query.text).toContain("tm.comparative_index_provenance");
+    expect(query.text).toContain("tm.basket_version");
+    expect(query.text).not.toContain("coalesce(tm.basket_version");
+    expect(query.text).not.toContain("complement_info_nombre");
+    expect(query.text).not.toContain("complement_info_taux");
     const comparisonQuery = buildCityComparisonQuery({ inseeCode: "95584", year: 2025 }, "17");
     expect(comparisonQuery.values).toEqual(["95584", 2025, "17"]);
     expect(comparisonQuery.text).toContain("publication_status = 'published'");
@@ -78,13 +87,28 @@ describe("city detail queries", () => {
               coverage_ratio: "1",
               comparative_index: null,
               comparative_index_status: "insufficient-coverage",
-              comparative_index_confidence: null,
-              basket_version: "residential-risk-v1",
+              basket_version: "residential-risk-v2",
               published_basket_category_count: 0,
+              estimated_basket_category_count: 2,
+              comparable_basket_category_count: 2,
               availability_mask: 0,
-              cohort_size: 0,
+              estimated_availability_mask: 3,
+              minimum_reference_cohort_size: 0,
+              comparative_index_provenance: "unavailable",
               population_band: "1000-4999",
-              categories: []
+              categories: [{
+                code: "ssmsi-example",
+                label: "Exemple masqué",
+                incidentCount: null,
+                ratePer1000: null,
+                countUnit: "faits",
+                rateDenominator: "population",
+                populationDenominator: 1044,
+                populationDenominatorYear: 2023,
+                housingDenominator: null,
+                housingDenominatorYear: null,
+                publicationStatus: "masked"
+              }]
             }],
             rowCount: 1
           };
@@ -125,5 +149,20 @@ describe("city detail queries", () => {
       [100, "coordinates-unavailable"],
       [200, "coordinates-unavailable"]
     ]);
+    expect(detail?.comparativeIndex).toMatchObject({
+      basketVersion: "residential-risk-v2",
+      provenance: "unavailable",
+      publishedComponentCount: 0,
+      estimatedComponentCount: 2,
+      comparableComponentCount: 2,
+      minimumReferenceCohortSize: 0
+    });
+    expect(detail?.categories[0]).toMatchObject({
+      publicationStatus: "masked",
+      incidentCount: null,
+      ratePer1000: null
+    });
+    expect(detail?.categories[0]).not.toHaveProperty("complementInfoNombre");
+    expect(detail?.categories[0]).not.toHaveProperty("complementInfoTaux");
   });
 });

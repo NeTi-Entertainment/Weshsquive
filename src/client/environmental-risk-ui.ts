@@ -1,4 +1,4 @@
-import type { EnvironmentalRiskStatus } from "@/server/environmental-risk";
+import type { EnvironmentalRiskStatus, EnvironmentalRiskSummary } from "@/server/environmental-risk";
 
 export function formatEnvironmentalRiskValue(value: number | null): string {
   if (value === null) return "Non disponible";
@@ -19,6 +19,19 @@ export function formatEnvironmentalRiskStatus(status: EnvironmentalRiskStatus): 
       return "Aucune commune dans ce rayon";
     case "coordinates-unavailable":
       return "Coordonnées indisponibles";
+  }
+}
+
+export function formatEnvironmentalRiskProvenance(
+  provenance: EnvironmentalRiskSummary["provenance"]
+): string {
+  switch (provenance) {
+    case "published-only":
+      return "Basé sur des indices publiés";
+    case "partially-estimated":
+      return "Contient des indices estimés";
+    case "unavailable":
+      return "Indice indisponible";
   }
 }
 

@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { CircleMarker, MapContainer, Polygon, Popup, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 
 import {
-  comparativeIndexCompletenessLabel,
-  comparativeIndexStatusLabel,
+  comparativeIndexComponentCountLabel,
+  comparativeIndexProvenanceLabel,
+  describeComparativeIndex,
+  formatComparativeIndexPopulationBand,
   formatCategoryRate,
   formatComparativeIndex,
   formatInteger,
@@ -16,9 +18,15 @@ import {
 import { LatestRequest } from "@/client/latest-request";
 import {
   formatEnvironmentalRiskCoverage,
+  formatEnvironmentalRiskProvenance,
   formatEnvironmentalRiskStatus,
   formatEnvironmentalRiskValue
 } from "@/client/environmental-risk-ui";
+import {
+  comparativeIndexProvenanceLegend,
+  formatEnvironmentalRiskNeighborProvenance,
+  getComparativeIndexVisualStyle
+} from "@/client/nearby-map-ui";
 import {
   formatPropertyMarketInterval,
   formatPropertyMarketValue,
@@ -31,12 +39,14 @@ import {
   buildNationalMapUrl,
   formatNationalMapResultCount,
   getNationalMapFeatureColor,
+  getNationalMapFeatureVisualStyle,
+  multiPolygonToLeafletPositions,
   NATIONAL_MAP_GROUP_COLOR,
   type NationalMapBounds,
   type NationalMapCriterion
 } from "@/client/france-map-ui";
 import type { CitySearchFormState } from "@/client/city-search-ui";
-import type { NationalMapGroup, NationalMapPoint, NationalMapResult } from "@/server/national-map";
+import type { NationalMapCommune, NationalMapGroup, NationalMapPoint, NationalMapResult } from "@/server/national-map";
 import type { RentPropertyType, SalePropertyType } from "@/shared/property-market";
 
 type FranceMapProps = {
@@ -173,18 +183,49 @@ export default function FranceMap({ form, categories, criterion, onCriterionChan
 
       <div className="france-map-legend" aria-label="Légende de la carte">
         <LegendSwatches propertyMarket={propertyLayerActive} />
-        <span className="map-band-unavailable">
-          {criterion.type === "environmentalRisk"
-            ? "Pas assez de données"
-            : propertyLayerActive
-              ? "Donnée non affichable"
-              : "Non disponible"}
-        </span>
+        {criterion.type !== "comparativeIndex" ? (
+          <span className="map-band-unavailable">
+            {criterion.type === "environmentalRisk"
+              ? "Pas assez de données"
+              : propertyLayerActive
+                ? "Donnée non affichable"
+                : "Non disponible"}
+          </span>
+        ) : null}
         {criterion.type === "environmentalRisk" ? (
           <span>La couleur reflète la moyenne des indices comparatifs des communes voisines, pondérée par la distance.</span>
         ) : null}
         {propertyLayerActive ? (
           <span>Couleur : percentile national des communes publiables pour la même année et le même type de logement.</span>
+        ) : null}
+        {criterion.type === "comparativeIndex" ? (
+          <div className="comparative-provenance-legend" aria-label="Provenance de l’indice comparatif">
+            {comparativeIndexProvenanceLegend.map((provenance) => {
+              const visualStyle = getComparativeIndexVisualStyle(
+                provenance === "unavailable" ? null : 50,
+                provenance
+              );
+              return (
+                <span className="comparative-provenance-key" key={provenance}>
+                  <i
+                    aria-hidden="true"
+                    className="comparative-provenance-swatch"
+                    style={{
+                      backgroundColor: visualStyle.fillColor,
+                      opacity: visualStyle.fillOpacity,
+                      borderColor: `rgba(38, 54, 70, ${visualStyle.borderOpacity})`,
+                      borderStyle: visualStyle.dashArray ? "dashed" : "solid",
+                      borderWidth: visualStyle.borderWeight
+                    }}
+                  />
+                  {comparativeIndexProvenanceLabel(provenance)}
+                </span>
+              );
+            })}
+            <span className="comparative-provenance-note">
+              Couleur : indice relatif par catégorie. Les estimations utilisent la moyenne départementale SSMSI des communes masquées.
+            </span>
+          </div>
         ) : null}
       </div>
 
@@ -206,8 +247,8 @@ export default function FranceMap({ form, categories, criterion, onCriterionChan
       ) : null}
       {loadState === "error" ? <p className="france-map-note error">{error}</p> : null}
       {loadState === "loading" ? <p className="france-map-note" role="status">Actualisation de la carte…</p> : null}
-      {loadState === "ready" && result?.level === "commune" && result.points.length === 0 ? (
-        <p className="france-map-note">Aucune commune avec coordonnées ne correspond à cette emprise et à ces filtres.</p>
+      {loadState === "ready" && result?.level === "commune" && !result.requiresZoom && result.communes.length === 0 ? (
+        <p className="france-map-note">Aucune commune avec contour géographique ne correspond à cette emprise et à ces filtres.</p>
       ) : null}
       {loadState === "ready" && result && result.level !== "commune" && result.groups.length === 0 ? (
         <p className="france-map-note">Aucun repère administratif avec coordonnées ne correspond à cette emprise.</p>
@@ -238,7 +279,7 @@ export default function FranceMap({ form, categories, criterion, onCriterionChan
           <GroupMarkers groups={result.groups} />
         ) : null}
         {result?.level === "commune" ? (
-          <CommuneMarkers points={result.points} year={Number(form.year)} criterion={criterion} />
+          <CommunePolygons communes={result.communes} year={Number(form.year)} criterion={criterion} />
         ) : null}
       </MapContainer>
     </section>
@@ -438,37 +479,41 @@ function groupBounds(group: NationalMapGroup) {
   );
 }
 
-function CommuneMarkers({
-  points,
+function CommunePolygons({
+  communes,
   year,
   criterion
 }: {
-  points: NationalMapPoint[];
+  communes: NationalMapCommune[];
   year: number;
   criterion: NationalMapCriterion;
 }) {
-  return points.map((point) => (
-    <CircleMarker
-      key={point.inseeCode}
-      center={[point.latitude, point.longitude]}
-      radius={5}
-      pathOptions={{
-        color: "#ffffff",
-        fillColor: getNationalMapFeatureColor({ type: "commune", point }, criterion),
-        fillOpacity: 0.92,
-        weight: 1
-      }}
-    >
-      <Popup>
-        <div className="nearby-map-popup">
-          <Link href={`/communes/${point.inseeCode}?year=${year}`}>{point.name}</Link>
-          <span>{point.departmentName} · {point.regionName}</span>
-          <span>Population : {formatPopulation(point.population)}{point.populationYear ? ` · Insee ${point.populationYear}` : ""}</span>
-          <PointMetric point={point} criterion={criterion} />
-        </div>
-      </Popup>
-    </CircleMarker>
-  ));
+  return communes.map((commune) => {
+    const visualStyle = getNationalMapFeatureVisualStyle({ type: "commune", point: commune }, criterion);
+    return (
+      <Polygon
+        key={commune.inseeCode}
+        positions={multiPolygonToLeafletPositions(commune.geometry)}
+        pathOptions={{
+          color: "#ffffff",
+          fillColor: visualStyle?.fillColor ?? getNationalMapFeatureColor({ type: "commune", point: commune }, criterion),
+          fillOpacity: visualStyle?.fillOpacity ?? 0.92,
+          opacity: visualStyle?.borderOpacity ?? 1,
+          dashArray: visualStyle?.dashArray ?? undefined,
+          weight: visualStyle?.borderWeight ?? 1
+        }}
+      >
+        <Popup>
+          <div className="nearby-map-popup">
+            <Link href={`/communes/${commune.inseeCode}?year=${year}`}>{commune.name}</Link>
+            <span>{commune.departmentName} · {commune.regionName}</span>
+            <span>Population : {formatPopulation(commune.population)}{commune.populationYear ? ` · Insee ${commune.populationYear}` : ""}</span>
+            <PointMetric point={commune} criterion={criterion} />
+          </div>
+        </Popup>
+      </Polygon>
+    );
+  });
 }
 
 function PointMetric({ point, criterion }: { point: NationalMapPoint; criterion: NationalMapCriterion }) {
@@ -527,7 +572,11 @@ function PointMetric({ point, criterion }: { point: NationalMapPoint; criterion:
       <>
         <strong>Indice environnemental {criterion.radiusKm} km : {formatEnvironmentalRiskValue(summary.value)}</strong>
         <span>{formatEnvironmentalRiskStatus(summary.status)}</span>
+        <span>{formatEnvironmentalRiskProvenance(summary.provenance)}</span>
         <span>{summary.scoredNeighborCount} / {summary.totalNeighborCount} communes voisines avec indice</span>
+        {formatEnvironmentalRiskNeighborProvenance(summary).map((line) => (
+          <span key={line}>{line}</span>
+        ))}
         <span>Couverture pondérée : {formatEnvironmentalRiskCoverage(summary.weightedCoverageRatio)}</span>
       </>
     );
@@ -535,12 +584,17 @@ function PointMetric({ point, criterion }: { point: NationalMapPoint; criterion:
 
   return (
     <>
-      <strong>Indice comparatif : {formatComparativeIndex(point.comparativeIndex)}</strong>
+      <strong>Indice comparatif : {formatComparativeIndex(point.comparativeIndex.value)}</strong>
+      <span>{comparativeIndexProvenanceLabel(point.comparativeIndex.provenance)}</span>
+      <span>{comparativeIndexComponentCountLabel(point.comparativeIndex)}</span>
       <span>
-        {point.comparativeIndexCompleteness
-          ? comparativeIndexCompletenessLabel(point.comparativeIndexCompleteness)
-          : comparativeIndexStatusLabel(point.comparativeIndexStatus as "comparable" | "insufficient-coverage" | "cohort-too-small" | "population-unavailable")}
+        {formatComparativeIndexPopulationBand(point.comparativeIndex.populationBand)} · cohorte publiée minimale : {point.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(point.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
       </span>
+      {point.comparativeIndex.estimatedComponentCount > 0 ? (
+        <span title={describeComparativeIndex(point.comparativeIndex)}>
+          Les estimations sont des moyennes départementales SSMSI des communes masquées.
+        </span>
+      ) : null}
       <span>Indice relatif calculé par l’application, pas un taux officiel.</span>
     </>
   );

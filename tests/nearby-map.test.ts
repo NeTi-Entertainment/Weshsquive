@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  comparativeIndexProvenanceLegend,
+  formatEnvironmentalRiskNeighborProvenance,
+  getComparativeIndexVisualStyle,
   getNearbyMapPointBand,
   getNearbyMapPointColor,
+  getNearbyMapPointVisualStyle,
   NEARBY_MAP_UNAVAILABLE_COLOR,
   type NearbyMapPoint
 } from "../src/client/nearby-map-ui";
@@ -15,9 +19,20 @@ const point: NearbyMapPoint = {
   distanceKm: 5.7,
   population: 3037,
   populationYear: 2023,
-  comparativeIndex: 97,
-  comparativeIndexStatus: "comparable",
-  comparativeIndexCompleteness: "low",
+  comparativeIndex: {
+    value: 97,
+    status: "comparable",
+    provenance: "partially-estimated",
+    completeness: "low",
+    basketVersion: "residential-risk-v2",
+    publishedComponentCount: 1,
+    estimatedComponentCount: 2,
+    comparableComponentCount: 3,
+    minimumReferenceCohortSize: 58,
+    basketCategoryCount: 6,
+    basketAvailability: [],
+    populationBand: "1000-4999"
+  },
   categoryLabel: "Cambriolages de logement",
   categoryRatePer1000: 8.2,
   categoryPercentile: 0.84,
@@ -32,6 +47,61 @@ describe("nearby map colors", () => {
   it("uses the comparative index for the default map criterion", () => {
     expect(getNearbyMapPointBand(point, "comparativeIndex")).toBe("extreme");
     expect(getNearbyMapPointColor(point, "comparativeIndex")).toBe("#781f24");
+  });
+
+  it("keeps the index hue while making score provenance visible in marker style", () => {
+    const published = getComparativeIndexVisualStyle(97, "published-only");
+    const partial = getComparativeIndexVisualStyle(97, "partially-estimated");
+    const estimated = getComparativeIndexVisualStyle(97, "estimated-only");
+
+    expect(partial.fillColor).toBe(published.fillColor);
+    expect(estimated.fillColor).toBe(published.fillColor);
+    expect(published).toMatchObject({ fillOpacity: 0.92, borderOpacity: 0.95, dashArray: null });
+    expect(partial).toMatchObject({ fillOpacity: 0.68, borderOpacity: 0.9, dashArray: "6 4" });
+    expect(estimated).toMatchObject({ fillOpacity: 0.48, borderOpacity: 1, dashArray: "2 2" });
+    expect(estimated.borderWeight).toBeGreaterThan(partial.borderWeight);
+    expect(getComparativeIndexVisualStyle(97, "unavailable").fillColor)
+      .toBe(NEARBY_MAP_UNAVAILABLE_COLOR);
+    expect(getComparativeIndexVisualStyle(null, "published-only").fillColor)
+      .toBe(NEARBY_MAP_UNAVAILABLE_COLOR);
+  });
+
+  it("provides one legend state for each supported comparative-index provenance", () => {
+    expect(comparativeIndexProvenanceLegend).toEqual([
+      "published-only",
+      "partially-estimated",
+      "estimated-only",
+      "unavailable"
+    ]);
+  });
+
+  it("uses provenance styling only for the comparative-index layer", () => {
+    expect(getNearbyMapPointVisualStyle(point, "comparativeIndex")?.fillColor)
+      .toBe("#781f24");
+    expect(getNearbyMapPointVisualStyle(point, "categoryRate")).toBeNull();
+    expect(getNearbyMapPointVisualStyle(point, {
+      type: "environmentalRisk",
+      radiusKm: 50
+    })).toBeNull();
+  });
+
+  it("formats the three environmental neighbor provenance counts separately", () => {
+    expect(formatEnvironmentalRiskNeighborProvenance({
+      radiusKm: 50,
+      value: 62.5,
+      status: "comparable",
+      provenance: "partially-estimated",
+      scoredNeighborCount: 6,
+      totalNeighborCount: 8,
+      publishedOnlyNeighborCount: 2,
+      partiallyEstimatedNeighborCount: 3,
+      estimatedOnlyNeighborCount: 1,
+      weightedCoverageRatio: 0.75
+    })).toEqual([
+      "Communes voisines avec indice publié : 2",
+      "Communes voisines avec indice partiellement estimé : 3",
+      "Communes voisines avec indice entièrement estimé : 1"
+    ]);
   });
 
   it("uses the comparable category percentile when a category criterion is selected", () => {
@@ -52,6 +122,20 @@ describe("nearby map colors", () => {
     }, "categoryRate")).toBe("#7b8794");
   });
 
+  it("does not color a stale numeric value when provenance says the score is unavailable", () => {
+    const inconsistentPoint = {
+      ...point,
+      comparativeIndex: {
+        ...point.comparativeIndex,
+        provenance: "unavailable" as const
+      }
+    };
+
+    expect(getNearbyMapPointBand(inconsistentPoint, "comparativeIndex")).toBe("");
+    expect(getNearbyMapPointColor(inconsistentPoint, "comparativeIndex"))
+      .toBe(NEARBY_MAP_UNAVAILABLE_COLOR);
+  });
+
   it.each([25, 50, 100, 200] as const)(
     "uses the matching environmental score for the %i km criterion",
     (radiusKm) => {
@@ -61,8 +145,12 @@ describe("nearby map colors", () => {
           radiusKm,
           value: 84,
           status: "comparable",
+          provenance: "partially-estimated",
           scoredNeighborCount: 4,
           totalNeighborCount: 7,
+          publishedOnlyNeighborCount: 2,
+          partiallyEstimatedNeighborCount: 1,
+          estimatedOnlyNeighborCount: 1,
           weightedCoverageRatio: 0.72
         }
       };
@@ -84,16 +172,24 @@ describe("nearby map colors", () => {
       radiusKm: 50,
       value: 84,
       status: "insufficient-coverage",
+      provenance: "unavailable",
       scoredNeighborCount: 2,
       totalNeighborCount: 5,
+      publishedOnlyNeighborCount: 1,
+      partiallyEstimatedNeighborCount: 1,
+      estimatedOnlyNeighborCount: 0,
       weightedCoverageRatio: 0.4
     }],
     ["mismatched radius", {
       radiusKm: 25,
       value: 84,
       status: "comparable",
+      provenance: "partially-estimated",
       scoredNeighborCount: 4,
       totalNeighborCount: 7,
+      publishedOnlyNeighborCount: 2,
+      partiallyEstimatedNeighborCount: 1,
+      estimatedOnlyNeighborCount: 1,
       weightedCoverageRatio: 0.72
     }]
   ] as const)(

@@ -14,15 +14,21 @@ import {
   type NearbyCityResult,
   type NearbySearchFormState
 } from "@/client/nearby-cities-ui";
-import type { NearbyMapPoint } from "@/client/nearby-map-ui";
 import {
-  comparativeIndexStatusLabel,
-  comparativeIndexCompletenessLabel,
+  comparativeIndexProvenanceLegend,
+  getComparativeIndexVisualStyle,
+  type NearbyMapPoint
+} from "@/client/nearby-map-ui";
+import {
+  comparativeIndexComponentCountLabel,
+  comparativeIndexProvenanceLabel,
+  describeComparativeIndex,
   describeBasketAvailability,
   formatInteger,
   formatPopulation,
   formatCategoryRate,
   formatComparativeIndex,
+  formatComparativeIndexPopulationBand,
   formatCoverage,
   getComparativeIndexClassName
 } from "@/client/city-search-ui";
@@ -365,14 +371,42 @@ export default function NearbyCitiesPanel({
           <span className="stat-band-high">60-80</span>
           <span className="stat-band-very-high">80-95</span>
           <span className="stat-band-extreme">95-100</span>
-          <span className="map-band-unavailable">Non disponible</span>
+          {mapCriterion.type !== "comparativeIndex" ? (
+            <span className="map-band-unavailable">Non disponible</span>
+          ) : null}
+          {mapCriterion.type === "comparativeIndex" ? (
+            <div className="comparative-provenance-legend" aria-label="Provenance de l’indice comparatif">
+              {comparativeIndexProvenanceLegend.map((provenance) => {
+                const visualStyle = getComparativeIndexVisualStyle(
+                  provenance === "unavailable" ? null : 50,
+                  provenance
+                );
+                return (
+                  <span className="comparative-provenance-key" key={provenance}>
+                    <i
+                      aria-hidden="true"
+                      className="comparative-provenance-swatch"
+                      style={{
+                        backgroundColor: visualStyle.fillColor,
+                        opacity: visualStyle.fillOpacity,
+                        borderColor: `rgba(38, 54, 70, ${visualStyle.borderOpacity})`,
+                        borderStyle: visualStyle.dashArray ? "dashed" : "solid",
+                        borderWidth: visualStyle.borderWeight
+                      }}
+                    />
+                    {comparativeIndexProvenanceLabel(provenance)}
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
         <p className="nearby-map-method">
           {mapCriterion.type === "environmentalRisk"
             ? `Indice environnemental calculé par l’application : moyenne pondérée des indices comparatifs des communes voisines dans un rayon de ${mapCriterion.radiusKm} km. Ce n’est ni une statistique officielle, ni un percentile environnemental, ni une mesure du risque individuel.`
             : selectedMapCategory
               ? `Percentile national du taux publié pour ${selectedMapCategory.label}, à année, unité, base et tranche de population comparables.`
-              : "Percentile de l’indice comparatif calculé par l’application."}
+              : "Indice relatif calculé par l’application : moyenne à poids égal des percentiles par catégorie. Le contour indique la provenance; les estimations utilisent le complément SSMSI départemental des valeurs masquées."}
         </p>
         <p className="nearby-map-method">
           Carte de points communaux : elle ne colore ni les contours des communes ni une surface continue.
@@ -441,14 +475,14 @@ export default function NearbyCitiesPanel({
                 </td>
                 <td
                   className={getComparativeIndexClassName(result.comparativeIndex.value)}
-                  title={`${comparativeIndexStatusLabel(result.comparativeIndex.status)} · tranche ${result.comparativeIndex.populationBand ?? "inconnue"} · ${result.comparativeIndex.publishedBasketCategoryCount}/${result.comparativeIndex.basketCategoryCount} indicateurs · ${result.comparativeIndex.cohortSize} communes comparables · ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
-                  aria-label={`Indice ${formatComparativeIndex(result.comparativeIndex.value)}. ${comparativeIndexStatusLabel(result.comparativeIndex.status)}. Tranche ${result.comparativeIndex.populationBand ?? "inconnue"}. Cohorte de ${result.comparativeIndex.cohortSize} communes. ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
+                  title={`${describeComparativeIndex(result.comparativeIndex)} ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
+                  aria-label={`Indice ${formatComparativeIndex(result.comparativeIndex.value)}. ${describeComparativeIndex(result.comparativeIndex)} ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
                 >
                   <strong>{formatComparativeIndex(result.comparativeIndex.value)}</strong>
+                  <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance)}</span>
+                  <span>{comparativeIndexComponentCountLabel(result.comparativeIndex)}</span>
                   <span>
-                    {result.comparativeIndex.completeness
-                      ? comparativeIndexCompletenessLabel(result.comparativeIndex.completeness)
-                      : comparativeIndexStatusLabel(result.comparativeIndex.status)}
+                    {formatComparativeIndexPopulationBand(result.comparativeIndex.populationBand)} · cohorte publiée minimale : {result.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(result.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
                   </span>
                 </td>
                 {selectedCategory ? (

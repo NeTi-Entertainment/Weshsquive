@@ -2,14 +2,16 @@ import Link from "next/link";
 
 import {
   collectCategoryColumns,
-  comparativeIndexCompletenessLabel,
-  comparativeIndexStatusLabel,
+  comparativeIndexComponentCountLabel,
+  comparativeIndexProvenanceLabel,
+  describeComparativeIndex,
   findCategory,
   formatCategoryRate,
   formatComparativeIndex,
   formatCoverage,
   formatInteger,
   formatPopulation,
+  formatComparativeIndexPopulationBand,
   getComparativeIndexClassName,
   type CitySearchResult
 } from "@/client/city-search-ui";
@@ -20,25 +22,6 @@ type CityComparisonTableProps = {
   categoryCode: string;
   onRemove: (inseeCode: string) => void;
 };
-
-function formatPopulationBand(band: string | null): string {
-  switch (band) {
-    case "under-1000":
-      return "Moins de 1 000 habitants";
-    case "1000-4999":
-      return "1 000 à 4 999 habitants";
-    case "5000-9999":
-      return "5 000 à 9 999 habitants";
-    case "10000-49999":
-      return "10 000 à 49 999 habitants";
-    case "50000-99999":
-      return "50 000 à 99 999 habitants";
-    case "100000-plus":
-      return "100 000 habitants et plus";
-    default:
-      return "Tranche inconnue";
-  }
-}
 
 export default function CityComparisonTable({
   cities,
@@ -119,16 +102,17 @@ export default function CityComparisonTable({
                 <td
                   key={city.inseeCode}
                   className={getComparativeIndexClassName(city.comparativeIndex.value)}
-                  title={`${comparativeIndexStatusLabel(city.comparativeIndex.status)} · tranche ${city.comparativeIndex.populationBand ?? "inconnue"} · ${city.comparativeIndex.publishedBasketCategoryCount}/${city.comparativeIndex.basketCategoryCount} indicateurs`}
+                  title={describeComparativeIndex(city.comparativeIndex)}
                 >
                   <strong>{formatComparativeIndex(city.comparativeIndex.value)}</strong>
+                  <span>{comparativeIndexProvenanceLabel(city.comparativeIndex.provenance)}</span>
+                  <span>{comparativeIndexComponentCountLabel(city.comparativeIndex)}</span>
+                  <span>{formatComparativeIndexPopulationBand(city.comparativeIndex.populationBand)}</span>
                   <span>
-                    {city.comparativeIndex.completeness
-                      ? comparativeIndexCompletenessLabel(city.comparativeIndex.completeness)
-                      : comparativeIndexStatusLabel(city.comparativeIndex.status)}
+                    Cohorte publiée minimale : {city.comparativeIndex.minimumReferenceCohortSize > 0
+                      ? `${formatInteger(city.comparativeIndex.minimumReferenceCohortSize)} communes`
+                      : "indisponible"}
                   </span>
-                  <span>{formatPopulationBand(city.comparativeIndex.populationBand)}</span>
-                  <span>{city.comparativeIndex.cohortSize.toLocaleString("fr-FR")} communes comparables</span>
                 </td>
               ))}
             </tr>

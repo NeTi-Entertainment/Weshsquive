@@ -310,9 +310,10 @@ try {
         return
     }
 
-    Write-AnnualLog ("Plan : population={0}, SSMSI={1}, métriques sécurité={2}, DVF=[{3}], ANIL={4}, métriques immobilières=[{5}]." -f `
+    Write-AnnualLog ("Plan : population={0}, SSMSI={1}, contours={2}, métriques sécurité={3}, DVF=[{4}], ANIL={5}, métriques immobilières=[{6}]." -f `
         $plan.ImportPopulation,
         $plan.ImportCrime,
+        $plan.RefreshBoundaries,
         ($plan.RefreshMetrics -or $plan.ImportPopulation -or $plan.ImportCrime),
         ($plan.ImportDvfYears -join ', '),
         $plan.ImportRentYear,
@@ -332,7 +333,7 @@ try {
         DatabasePassword = $DatabasePassword
     }
 
-    if ($plan.ImportCrime -or $plan.ImportPopulation) {
+    if ($plan.RefreshBoundaries) {
         $administrativeArguments = $commonArguments.Clone()
         $administrativeArguments.SourceYear = $ssmiRelease.GeographyYear
         $administrativeArguments.DeferMetricsRefresh = $true
@@ -347,6 +348,13 @@ try {
             -Name "coordonnées des communes" `
             -Path (Join-Path $PSScriptRoot "import_city_coordinates.ps1") `
             -Arguments $coordinateArguments
+
+        $boundaryArguments = $commonArguments.Clone()
+        $boundaryArguments.SourceYear = $ssmiRelease.GeographyYear
+        Invoke-ImportStep `
+            -Name "contours polygonaux des communes" `
+            -Path (Join-Path $PSScriptRoot "import_city_boundaries.ps1") `
+            -Arguments $boundaryArguments
     }
 
     if ($plan.ImportPopulation) {

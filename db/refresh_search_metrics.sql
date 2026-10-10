@@ -25,7 +25,9 @@ insert into search_metrics_city_year_category (
     insee_pop,
     insee_pop_millesime,
     insee_log,
-    insee_log_millesime
+    insee_log_millesime,
+    complement_info_nombre,
+    complement_info_taux
 )
 select
     :snapshot_id,
@@ -45,7 +47,9 @@ select
     metrics.insee_pop,
     metrics.insee_pop_millesime,
     metrics.insee_log,
-    metrics.insee_log_millesime
+    metrics.insee_log_millesime,
+    metrics.complement_info_nombre,
+    metrics.complement_info_taux
 from city_year_category_metrics metrics;
 
 insert into search_metrics_city_year_comparative (
@@ -61,6 +65,11 @@ insert into search_metrics_city_year_comparative (
     availability_mask,
     published_basket_category_count,
     cohort_size,
+    estimated_basket_category_count,
+    comparable_basket_category_count,
+    estimated_availability_mask,
+    minimum_reference_cohort_size,
+    comparative_index_provenance,
     comparative_index_status,
     comparative_index,
     comparative_index_confidence,
@@ -79,6 +88,11 @@ select
     metrics.availability_mask,
     metrics.published_basket_category_count,
     metrics.cohort_size,
+    metrics.estimated_basket_category_count,
+    metrics.comparable_basket_category_count,
+    metrics.estimated_availability_mask,
+    metrics.minimum_reference_cohort_size,
+    metrics.comparative_index_provenance,
     metrics.comparative_index_status,
     metrics.comparative_index,
     metrics.comparative_index_confidence,

@@ -5,13 +5,34 @@ import {
   buildNationalMapUrl,
   formatNationalMapResultCount,
   getNationalMapFeatureColor,
+  getNationalMapFeatureVisualStyle,
   getNationalMapLevel,
-  getNationalMapPointColor
+  getNationalMapPointColor,
+  multiPolygonToLeafletPositions
 } from "../src/client/france-map-ui";
 
 const bounds = { west: -1.2, south: 44.2, east: 0.3, north: 45.1 };
 
 describe("national map UI helpers", () => {
+  it("converts multipolygon coordinates while preserving holes and separate parts", () => {
+    expect(multiPolygonToLeafletPositions({
+      type: "MultiPolygon",
+      coordinates: [
+        [
+          [[1, 2], [3, 4], [5, 6], [1, 2]],
+          [[1.5, 2.5], [2, 3], [1.5, 2.5]]
+        ],
+        [[[10, 20], [30, 40], [10, 20]]]
+      ]
+    })).toEqual([
+      [
+        [[2, 1], [4, 3], [6, 5], [2, 1]],
+        [[2.5, 1.5], [3, 2], [2.5, 1.5]]
+      ],
+      [[[20, 10], [40, 30], [20, 10]]]
+    ]);
+  });
+
   it("uses the shared region, department and commune zoom levels", () => {
     expect([5, 6, 7, 8].map(getNationalMapLevel)).toEqual([
       "region",
@@ -99,9 +120,20 @@ describe("national map UI helpers", () => {
       longitude: -0.58,
       population: 260958,
       populationYear: 2023,
-      comparativeIndex: 54,
-      comparativeIndexStatus: "comparable",
-      comparativeIndexCompleteness: "high" as const,
+      comparativeIndex: {
+        value: 54,
+        status: "comparable" as const,
+        provenance: "published-only" as const,
+        completeness: "high" as const,
+        basketVersion: "residential-risk-v2",
+        publishedComponentCount: 6,
+        estimatedComponentCount: 0,
+        comparableComponentCount: 6,
+        minimumReferenceCohortSize: 80,
+        basketCategoryCount: 6,
+        basketAvailability: [],
+        populationBand: "100000-plus"
+      },
       categoryLabel: "Cambriolages",
       categoryIncidentCount: 12,
       categoryRatePer1000: "8.2",
@@ -119,11 +151,32 @@ describe("national map UI helpers", () => {
 
     expect(getNationalMapPointColor(point, { type: "categoryRate", categoryCode: "B" }))
       .toBe("#c84b3f");
+    expect(getNationalMapPointColor(point, { type: "comparativeIndex" })).toBe("#f4e77d");
+    expect(getNationalMapFeatureVisualStyle({ type: "commune", point }, {
+      type: "comparativeIndex"
+    })).toMatchObject({ fillColor: "#f4e77d", dashArray: null });
+    expect(getNationalMapFeatureVisualStyle({
+      type: "commune",
+      point: {
+        ...point,
+        comparativeIndex: { ...point.comparativeIndex, provenance: "partially-estimated" }
+      }
+    }, { type: "comparativeIndex" })).toMatchObject({ fillOpacity: 0.68, dashArray: "6 4" });
+    expect(getNationalMapFeatureVisualStyle({ type: "commune", point }, {
+      type: "categoryRate",
+      categoryCode: "B"
+    })).toBeNull();
+    expect(getNationalMapFeatureVisualStyle({ type: "department" }, {
+      type: "comparativeIndex"
+    })).toBeNull();
     expect(getNationalMapPointColor({ ...point, categoryPublicationStatus: "masked" }, {
       type: "categoryRate",
       categoryCode: "B"
     })).toBe("#7b8794");
-    expect(getNationalMapPointColor({ ...point, comparativeIndex: null }, {
+    expect(getNationalMapPointColor({
+      ...point,
+      comparativeIndex: { ...point.comparativeIndex, value: null, status: "insufficient-coverage", provenance: "unavailable", completeness: null }
+    }, {
       type: "comparativeIndex"
     })).toBe("#7b8794");
     expect(getNationalMapFeatureColor({ type: "region" }, {
@@ -156,19 +209,30 @@ describe("national map UI helpers", () => {
       level: "region",
       snapshotId: null,
       groups: [{} as never],
-      points: []
+      communes: []
     })).toBe("1 région dans l’emprise visible");
     expect(formatNationalMapResultCount({
       level: "department",
       snapshotId: null,
       groups: [{} as never, {} as never],
-      points: []
+      communes: []
     })).toBe("2 départements dans l’emprise visible");
     expect(formatNationalMapResultCount({
       level: "commune",
       snapshotId: null,
       groups: [],
-      points: [{} as never]
+      communes: [{} as never],
+      requiresZoom: false
     })).toBe("1 commune dans l’emprise visible");
+  });
+
+  it("asks for a closer zoom when commune polygons exceed the rendering limit", () => {
+    expect(formatNationalMapResultCount({
+      level: "commune",
+      snapshotId: "17",
+      groups: [],
+      communes: [],
+      requiresZoom: true
+    })).toBe("Zoomez davantage pour afficher les communes de cette emprise");
   });
 });

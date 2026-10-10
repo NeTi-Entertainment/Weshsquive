@@ -1,6 +1,7 @@
 import { getComparativeIndexClassName } from "@/client/city-search-ui";
 import {
   formatEnvironmentalRiskCoverage,
+  formatEnvironmentalRiskProvenance,
   formatEnvironmentalRiskStatus,
   formatEnvironmentalRiskValue
 } from "@/client/environmental-risk-ui";
@@ -40,9 +41,13 @@ export default function EnvironmentalRiskSection({ summaries }: EnvironmentalRis
                     {summary.value !== null && <span className="environmental-risk-scale">/ 100</span>}
                   </div>
                   <small>{formatEnvironmentalRiskStatus(summary.status)}</small>
+                  <small>{formatEnvironmentalRiskProvenance(summary.provenance)}</small>
                 </td>
                 <td aria-label={`${summary.scoredNeighborCount} communes avec indice sur ${summary.totalNeighborCount} communes voisines`}>
                   {summary.scoredNeighborCount} / {summary.totalNeighborCount}
+                  <small className="environmental-risk-provenance-counts">
+                    Publiés : {summary.publishedOnlyNeighborCount} · partiellement estimés : {summary.partiallyEstimatedNeighborCount} · entièrement estimés : {summary.estimatedOnlyNeighborCount}
+                  </small>
                 </td>
                 <td>{formatEnvironmentalRiskCoverage(summary.weightedCoverageRatio)}</td>
               </tr>
@@ -53,7 +58,7 @@ export default function EnvironmentalRiskSection({ summaries }: EnvironmentalRis
       <p className="environmental-risk-note">
         Cette moyenne, calculée par l’application à partir des indices comparatifs des communes voisines et pondérée par la distance,
         décrit une exposition statistique relative. Ce n’est ni une statistique officielle du SSMSI, ni un percentile environnemental,
-        ni une probabilité individuelle ou une garantie de sécurité.
+        ni une probabilité individuelle ou une garantie de sécurité. Les compléments départementaux SSMSI servent uniquement de fallback estimatif pour les catégories masquées; ils ne sont jamais affichés comme des valeurs communales.
       </p>
     </section>
   );

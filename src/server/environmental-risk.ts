@@ -1,3 +1,5 @@
+import type { ComparativeIndexProvenance } from "@/server/comparative-index";
+
 export const ENVIRONMENTAL_RADII_KM = [25, 50, 100, 200] as const;
 
 export type EnvironmentalRadiusKm = (typeof ENVIRONMENTAL_RADII_KM)[number];
@@ -11,8 +13,12 @@ export type EnvironmentalRiskSummary = {
   radiusKm: EnvironmentalRadiusKm;
   value: number | null;
   status: EnvironmentalRiskStatus;
+  provenance: "published-only" | "partially-estimated" | "unavailable";
   scoredNeighborCount: number;
   totalNeighborCount: number;
+  publishedOnlyNeighborCount: number;
+  partiallyEstimatedNeighborCount: number;
+  estimatedOnlyNeighborCount: number;
   weightedCoverageRatio: number | null;
 };
 
@@ -21,6 +27,7 @@ export type EnvironmentalNeighborRow = {
   neighborInseeCode: string;
   distanceKm: number;
   comparativeIndex: number | null;
+  comparativeIndexProvenance: ComparativeIndexProvenance;
 };
 
 type CityEnvironmentalRiskQuery = {
@@ -54,7 +61,8 @@ select
   target.insee_code as target_insee_code,
   neighbor.insee_code as neighbor_insee_code,
   neighbor.distance_km,
-  metrics.comparative_index
+  metrics.comparative_index,
+  coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance
 from target
 cross join environmental_radii
 left join lateral (
@@ -103,7 +111,8 @@ select
   targets.coordinates_available as target_coordinates_available,
   neighbor.insee_code as neighbor_insee_code,
   neighbor.distance_km,
-  metrics.comparative_index
+  metrics.comparative_index,
+  coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance
 from targets
 left join lateral (
   select
@@ -151,29 +160,55 @@ export function summarizeEnvironmentalRisk(
   let scoredWeight = 0;
   let weightedIndex = 0;
   let scoredNeighborCount = 0;
+  let publishedOnlyNeighborCount = 0;
+  let partiallyEstimatedNeighborCount = 0;
+  let estimatedOnlyNeighborCount = 0;
 
   for (const neighbor of neighbors) {
     const weight = 1 - neighbor.distanceKm / radiusKm;
     totalWeight += weight;
+    const provenance = neighbor.comparativeIndexProvenance;
 
-    if (neighbor.comparativeIndex === null || !Number.isFinite(neighbor.comparativeIndex)) {
+    if (
+      neighbor.comparativeIndex === null ||
+      !Number.isFinite(neighbor.comparativeIndex) ||
+      (provenance !== "published-only" &&
+        provenance !== "partially-estimated" &&
+        provenance !== "estimated-only")
+    ) {
       continue;
     }
 
     scoredNeighborCount += 1;
+    if (provenance === "published-only") {
+      publishedOnlyNeighborCount += 1;
+    } else if (provenance === "partially-estimated") {
+      partiallyEstimatedNeighborCount += 1;
+    } else {
+      estimatedOnlyNeighborCount += 1;
+    }
     scoredWeight += weight;
     weightedIndex += neighbor.comparativeIndex * weight;
   }
 
   const weightedCoverageRatio = scoredWeight / totalWeight;
   const comparable = scoredNeighborCount >= 3 && weightedCoverageRatio >= 0.5;
+  const provenance = !comparable
+    ? "unavailable"
+    : publishedOnlyNeighborCount === scoredNeighborCount
+      ? "published-only"
+      : "partially-estimated";
 
   return {
     radiusKm,
     value: comparable ? Math.round((weightedIndex / scoredWeight) * 10) / 10 : null,
     status: comparable ? "comparable" : "insufficient-coverage",
+    provenance,
     scoredNeighborCount,
     totalNeighborCount: neighbors.length,
+    publishedOnlyNeighborCount,
+    partiallyEstimatedNeighborCount,
+    estimatedOnlyNeighborCount,
     weightedCoverageRatio
   };
 }
@@ -186,8 +221,12 @@ function emptySummary(
     radiusKm,
     value: null,
     status,
+    provenance: "unavailable",
     scoredNeighborCount: 0,
     totalNeighborCount: 0,
+    publishedOnlyNeighborCount: 0,
+    partiallyEstimatedNeighborCount: 0,
+    estimatedOnlyNeighborCount: 0,
     weightedCoverageRatio: null
   };
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   mapComparativeIndex,
   mapPublishedMetrics,
+  type ComparativeIndex,
   type ComparativeIndexColumns,
   type PublishedMetricsColumns
 } from "@/server/comparative-index";
@@ -82,9 +83,7 @@ export type NationalMapPoint = {
   population: number | null;
   populationYear: number | null;
   published: ReturnType<typeof mapPublishedMetrics>;
-  comparativeIndex: number | null;
-  comparativeIndexStatus: string;
-  comparativeIndexCompleteness: "high" | "medium" | "low" | null;
+  comparativeIndex: ComparativeIndex;
   categoryLabel: string | null;
   categoryIncidentCount: number | null;
   categoryRatePer1000: string | null;
@@ -100,9 +99,20 @@ export type NationalMapPoint = {
   propertyMarket: PropertyMarketMetric | null;
 };
 
+export type NationalMapGeometry = {
+  type: "MultiPolygon";
+  coordinates: number[][][][];
+};
+
+export type NationalMapCommune = NationalMapPoint & {
+  geometry: NationalMapGeometry;
+};
+
+export const NATIONAL_MAP_MAX_COMMUNE_FEATURES = 2500;
+
 export type NationalMapResult =
-  | { level: "region" | "department"; snapshotId: string | null; groups: NationalMapGroup[]; points: [] }
-  | { level: "commune"; snapshotId: string | null; groups: []; points: NationalMapPoint[] };
+  | { level: "region" | "department"; snapshotId: string | null; groups: NationalMapGroup[]; communes: [] }
+  | { level: "commune"; snapshotId: string | null; groups: []; communes: NationalMapCommune[]; requiresZoom: boolean };
 
 export type SqlQuery = { text: string; values: Array<string | number> };
 
@@ -266,10 +276,7 @@ order by name, code
   const valuesWithViewport = [params.west, params.south, params.east, params.north];
   values.push(...valuesWithViewport);
   const visibleFilters = [
-    "c.longitude between $1 and $3",
-    "c.latitude between $2 and $4",
-    "c.longitude is not null",
-    "c.latitude is not null"
+    "ST_Intersects(c.boundary_geom, ST_MakeEnvelope($1, $2, $3, $4, 4326))"
   ];
   if (params.regionCode) visibleFilters.push(`c.region_code = ${pushValue(params.regionCode)}`);
   if (params.departmentCode) visibleFilters.push(`c.department_code = ${pushValue(params.departmentCode)}`);
@@ -328,6 +335,7 @@ order by name, code
       where ${categoryFilters.join("\n        and ")}
     )`);
   }
+  const zoomPlaceholder = pushValue(params.zoom);
 
   const mapCategoryCtes = mapCategoryPlaceholder
     ? `,
@@ -412,6 +420,14 @@ with active_snapshot as (
 )${mapCategoryCtes}
 select
   active_snapshot.snapshot_id::text as snapshot_id,
+  ST_AsGeoJSON(ST_Multi(ST_Transform(
+    ST_SimplifyPreserveTopology(
+      ST_Transform(c.boundary_geom, 3857),
+      0.5 * 156543.03392 / power(2, ${zoomPlaceholder}::double precision)
+    ),
+    4326
+  ))) as boundary_geojson,
+  count(*) over() as visible_feature_count,
   c.insee_code,
   c.name,
   c.department_code,
@@ -431,11 +447,14 @@ select
     case when metrics.population is null or metrics.population <= 0
       then 'population-unavailable' else 'insufficient-coverage' end
   ) as comparative_index_status,
-  metrics.comparative_index_confidence,
-  coalesce(metrics.basket_version, 'residential-risk-v1') as basket_version,
+  metrics.basket_version,
   coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
-  coalesce(metrics.cohort_size, 0) as cohort_size,
+  coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
+  coalesce(metrics.comparable_basket_category_count, 0) as comparable_basket_category_count,
+  coalesce(metrics.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
   coalesce(metrics.availability_mask, 0) as availability_mask,
+  coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
+  coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
   metrics.population_band,
   map_category.category_label,
   map_category.incident_count,
@@ -461,6 +480,7 @@ ${mapCategoryJoin}
 ${propertyMarketJoin}
 where ${[...visibleFilters, ...cityFilters].join("\n  and ")}
 order by c.name, c.insee_code
+limit ${NATIONAL_MAP_MAX_COMMUNE_FEATURES + 1}
 `.trim()
   };
 }
@@ -489,6 +509,8 @@ type RawGroupRow = {
 
 type RawNationalMapPoint = {
   snapshot_id: string | null;
+  boundary_geojson: string;
+  visible_feature_count: string;
   insee_code: string;
   name: string;
   department_code: string;
@@ -518,6 +540,7 @@ type RawMapEnvironmentalRiskRow = {
   neighbor_insee_code: string | null;
   distance_km: string | null;
   comparative_index: string | number | null;
+  comparative_index_provenance: ComparativeIndex["provenance"];
 };
 
 export async function searchNationalMap(
@@ -547,12 +570,14 @@ export async function searchNationalMap(
           north: Number(row.north)
         }
       })),
-      points: []
+      communes: []
     };
   }
 
   const result = await db.query<RawNationalMapPoint>(query.text, query.values);
-  const points: NationalMapPoint[] = result.rows.map((row) => {
+  const visibleFeatureCount = Number(result.rows[0]?.visible_feature_count ?? 0);
+  const requiresZoom = visibleFeatureCount > NATIONAL_MAP_MAX_COMMUNE_FEATURES;
+  const communes: NationalMapCommune[] = requiresZoom ? [] : result.rows.map((row) => {
     const comparative = mapComparativeIndex(row, row.population);
     return {
       inseeCode: row.insee_code,
@@ -566,9 +591,7 @@ export async function searchNationalMap(
       population: row.population,
       populationYear: row.population_year,
       published: mapPublishedMetrics(row),
-      comparativeIndex: comparative.value,
-      comparativeIndexStatus: comparative.status,
-      comparativeIndexCompleteness: comparative.completeness,
+      comparativeIndex: comparative,
       categoryLabel: row.category_label,
       categoryIncidentCount: row.incident_count,
       categoryRatePer1000: row.rate_per_1000,
@@ -583,13 +606,14 @@ export async function searchNationalMap(
       environmentalRisk: null,
       propertyMarket: propertyMarketSelectionFromParams(params)
         ? mapPropertyMarketMetric(row, propertyMarketSelectionFromParams(params) as PropertyMarketSelection)
-        : null
+        : null,
+      geometry: JSON.parse(row.boundary_geojson) as NationalMapGeometry
     };
   });
   const snapshotId = result.rows[0]?.snapshot_id ?? null;
-  if (params.criterion === "environmentalRisk" && snapshotId && points.length > 0) {
+  if (params.criterion === "environmentalRisk" && snapshotId && communes.length > 0) {
     const radius = params.environmentalRadiusKm as EnvironmentalRadiusKm;
-    const codes = [...new Set(points.map((point) => point.inseeCode))];
+    const codes = [...new Set(communes.map((commune) => commune.inseeCode))];
     const environmentalQuery = buildMapEnvironmentalRiskQuery(
       codes,
       params.year,
@@ -618,13 +642,14 @@ export async function searchNationalMap(
         targetInseeCode: row.target_insee_code,
         neighborInseeCode: row.neighbor_insee_code,
         distanceKm: Number(row.distance_km),
-        comparativeIndex: row.comparative_index === null ? null : Number(row.comparative_index)
+        comparativeIndex: row.comparative_index === null ? null : Number(row.comparative_index),
+        comparativeIndexProvenance: row.comparative_index_provenance
       });
     }
-    for (const point of points) {
-      const group = groupedRows.get(point.inseeCode);
-      point.environmentalRisk = summarizeEnvironmentalRisk(
-        point.inseeCode,
+    for (const commune of communes) {
+      const group = groupedRows.get(commune.inseeCode);
+      commune.environmentalRisk = summarizeEnvironmentalRisk(
+        commune.inseeCode,
         radius,
         group?.coordinatesAvailable ?? true,
         group?.neighbors ?? []
@@ -635,7 +660,8 @@ export async function searchNationalMap(
     level: "commune",
     snapshotId,
     groups: [],
-    points
+    communes,
+    requiresZoom
   };
 }
 

@@ -7,6 +7,21 @@ import {
   searchNationalMap
 } from "../src/server/national-map";
 
+const partiallyEstimatedBasketAvailability = [
+  { code: "ssmsi-78384436563146dc6167ea53b7b5e0cd", label: "Cambriolages de logement", available: true, estimated: false },
+  { code: "ssmsi-74a195792dd119f60822e61df3587522", label: "Vols de véhicule", available: true, estimated: false },
+  { code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928", label: "Vols dans les véhicules", available: true, estimated: false },
+  { code: "ssmsi-bf6b19b3e53b90f6594ec2e8303c5778", label: "Destructions et dégradations volontaires", available: true, estimated: false },
+  { code: "ssmsi-a2601b900aa009440624697e1d74e4a9", label: "Violences physiques hors cadre familial", available: true, estimated: true },
+  { code: "ssmsi-bdbeb8ca73503f8264dab16159795328", label: "Trafic de stupéfiants", available: true, estimated: true }
+];
+
+const unavailableBasketAvailability = partiallyEstimatedBasketAvailability.map((category) => ({
+  ...category,
+  available: false,
+  estimated: false
+}));
+
 function mapParams(overrides: Record<string, string> = {}) {
   return new URLSearchParams({
     year: "2025",
@@ -121,20 +136,52 @@ describe("national map parameters", () => {
     expect(query.text).toContain("max(c.latitude) as north");
   });
 
-  it("filters commune points to the viewport and ranks only matching published cohorts", () => {
+  it("selects communes by visible polygon intersection and ranks matching published cohorts", () => {
     const query = buildNationalMapQuery(parseNationalMapParams(mapParams({
       zoom: "8",
       criterion: "categoryRate",
       mapCategoryCode: "ssmsi-example"
     })));
 
-    expect(query.values).toEqual([-5, 41, 10, 52, 2025, "ssmsi-example"]);
-    expect(query.text).toContain("c.longitude between $1 and $3");
-    expect(query.text).toContain("c.latitude between $2 and $4");
+    expect(query.values).toEqual([-5, 41, 10, 52, 2025, "ssmsi-example", 8]);
+    expect(query.text).toContain("ST_Intersects(c.boundary_geom, ST_MakeEnvelope($1, $2, $3, $4, 4326))");
+    expect(query.text).not.toContain("c.longitude between $1 and $3");
+    expect(query.text).toContain("ST_SimplifyPreserveTopology");
+    expect(query.text).toContain("ST_AsGeoJSON(ST_Multi(ST_Transform(");
+    expect(query.text).toContain("ST_Transform(c.boundary_geom, 3857)");
+    expect(query.text).toContain("count(*) over() as visible_feature_count");
+    expect(query.text).toContain("limit 2501");
     expect(query.text).toContain("partition by metrics.population_band, category.count_unit, category.rate_denominator");
     expect(query.text).toContain("category.publication_status = 'published'");
     expect(query.text).toContain("category.rate_denominator in ('population', 'housing')");
     expect(query.text).toContain("metrics.snapshot_id = active_snapshot.snapshot_id");
+    expect(query.text).toContain("metrics.estimated_basket_category_count");
+    expect(query.text).toContain("metrics.comparable_basket_category_count");
+    expect(query.text).toContain("metrics.estimated_availability_mask");
+    expect(query.text).toContain("metrics.minimum_reference_cohort_size");
+    expect(query.text).toContain("metrics.comparative_index_provenance");
+    expect(query.text).toContain("metrics.basket_version");
+    expect(query.text).not.toContain("coalesce(metrics.basket_version");
+    expect(query.text).not.toContain("complement_info_nombre");
+    expect(query.text).not.toContain("complement_info_taux");
+  });
+
+  it("requests a closer zoom instead of returning a partial list above the polygon limit", async () => {
+    const rows = Array.from({ length: 2501 }, (_, index) => rawCityRow({
+      insee_code: String(index).padStart(5, "0"),
+      visible_feature_count: "2501"
+    }));
+    const db = { query: vi.fn().mockResolvedValue({ rows, rowCount: rows.length }) };
+    const params = parseNationalMapParams(mapParams({ zoom: "8" }));
+
+    const result = await searchNationalMap(db as never, params);
+
+    expect(result).toMatchObject({
+      level: "commune",
+      snapshotId: "17",
+      communes: [],
+      requiresZoom: true
+    });
   });
 
   it("joins indexed property metrics only for visible communes in the selected year", () => {
@@ -144,11 +191,11 @@ describe("national map parameters", () => {
       marketPropertyType: "house"
     })));
 
-    expect(query.values).toEqual([-5, 41, 10, 52, 2025, "sale", "house"]);
+    expect(query.values).toEqual([-5, 41, 10, 52, 2025, "sale", "house", 8]);
     expect(query.text).toContain("property_market.year = $5");
     expect(query.text).toContain("property_market.metric_kind = $6");
     expect(query.text).toContain("property_market.property_type = $7");
-    expect(query.text).toContain("c.longitude between $1 and $3");
+    expect(query.text).toContain("ST_Intersects(c.boundary_geom, ST_MakeEnvelope($1, $2, $3, $4, 4326))");
     expect(query.text).not.toMatch(/max\s*\(\s*year\s*\)/i);
 
     const regionQuery = buildNationalMapQuery(parseNationalMapParams(mapParams({
@@ -186,10 +233,22 @@ describe("national map parameters", () => {
     const result = await searchNationalMap(db as never, params);
 
     expect(result.level).toBe("commune");
-    if (result.level !== "commune") throw new Error("Expected commune points");
-    expect(result.points[0]).toMatchObject({
-      comparativeIndex: 54,
-      propertyMarket: {
+    if (result.level !== "commune") throw new Error("Expected commune polygons");
+    expect(result.communes[0].comparativeIndex).toEqual({
+      value: 54,
+      status: "comparable",
+      provenance: "partially-estimated",
+      completeness: "high",
+      basketVersion: "residential-risk-v2",
+      publishedComponentCount: 4,
+      estimatedComponentCount: 2,
+      comparableComponentCount: 6,
+      minimumReferenceCohortSize: 150,
+      basketCategoryCount: 6,
+      basketAvailability: partiallyEstimatedBasketAvailability,
+      populationBand: "100000-plus"
+    });
+    expect(result.communes[0].propertyMarket).toEqual({
         kind: "rent",
         propertyType: "apartment",
         valuePerM2: "13.2500",
@@ -200,7 +259,6 @@ describe("national map parameters", () => {
         status: "published",
         sourceSystem: "anil-rent-map",
         sourceYear: 2025
-      }
     });
   });
 
@@ -209,6 +267,11 @@ describe("national map parameters", () => {
       query: async () => ({
         rows: [{
           snapshot_id: "17",
+          visible_feature_count: "1",
+          boundary_geojson: JSON.stringify({
+            type: "MultiPolygon",
+            coordinates: [[[[2, 46], [2, 46.01], [2.01, 46.01], [2.01, 46], [2, 46]]]]
+          }),
           insee_code: "33063",
           name: "Bordeaux",
           department_code: "33",
@@ -221,11 +284,14 @@ describe("national map parameters", () => {
           population_year: null,
           comparative_index: null,
           comparative_index_status: "population-unavailable",
-          comparative_index_confidence: null,
-          basket_version: "residential-risk-v1",
+          basket_version: null,
           published_basket_category_count: 0,
-          cohort_size: 0,
+          estimated_basket_category_count: 0,
+          comparable_basket_category_count: 0,
+          minimum_reference_cohort_size: 0,
           availability_mask: 0,
+          estimated_availability_mask: 0,
+          comparative_index_provenance: "unavailable",
           population_band: null,
           published_category_count: 0,
           total_category_count: 15,
@@ -254,11 +320,28 @@ describe("national map parameters", () => {
     const result = await searchNationalMap(db as never, params);
 
     expect(result.level).toBe("commune");
-    if (result.level !== "commune") throw new Error("Expected commune points");
-    expect(result.points[0]).toMatchObject({
+    if (result.level !== "commune") throw new Error("Expected commune polygons");
+    expect(result.communes[0].comparativeIndex).toEqual({
+      value: null,
+      status: "population-unavailable",
+      provenance: "unavailable",
+      completeness: null,
+      basketVersion: null,
+      publishedComponentCount: 0,
+      estimatedComponentCount: 0,
+      comparableComponentCount: 0,
+      minimumReferenceCohortSize: 0,
+      basketCategoryCount: 6,
+      basketAvailability: unavailableBasketAvailability,
+      populationBand: null
+    });
+    expect(result.communes[0]).toMatchObject({
       inseeCode: "33063",
       population: null,
-      comparativeIndex: null,
+      geometry: {
+        type: "MultiPolygon",
+        coordinates: [[[[2, 46], [2, 46.01], [2.01, 46.01], [2.01, 46], [2, 46]]]]
+      },
       categoryPublicationStatus: "masked",
       categoryIncidentCount: null,
       categoryRatePer1000: null
@@ -289,7 +372,7 @@ describe("national map parameters", () => {
 
     const result = await searchNationalMap(db as never, params);
 
-    expect(result).toMatchObject({ level: "region", snapshotId: "17", points: [] });
+    expect(result).toMatchObject({ level: "region", snapshotId: "17", communes: [] });
     if (result.level === "commune") throw new Error("Expected navigation groups");
     expect(result.groups[0]).toEqual({
       type: "region",
@@ -306,7 +389,7 @@ describe("national map parameters", () => {
     expect(result.groups[0]).not.toHaveProperty("crimeCount");
   });
 
-  it("batches environmental scores for visible commune points on the same snapshot", async () => {
+  it("batches environmental scores for visible commune polygons on the same snapshot", async () => {
     const db = {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [rawCityRow()], rowCount: 1 })
@@ -316,7 +399,8 @@ describe("national map parameters", () => {
             target_coordinates_available: true,
             neighbor_insee_code: `3300${index}`,
             distance_km: String(index + 1),
-            comparative_index: comparativeIndex
+            comparative_index: comparativeIndex,
+            comparative_index_provenance: "partially-estimated"
           })),
           rowCount: 3
         })
@@ -331,14 +415,36 @@ describe("national map parameters", () => {
 
     expect(db.query).toHaveBeenCalledTimes(2);
     expect(db.query.mock.calls[1]?.[1]).toEqual([["33063"], 2025, "17", 25000]);
+    expect(db.query.mock.calls[1]?.[0]).toContain("metrics.comparative_index_provenance");
     expect(result.level).toBe("commune");
-    if (result.level !== "commune") throw new Error("Expected commune points");
-    expect(result.points[0]?.environmentalRisk).toMatchObject({
+    if (result.level !== "commune") throw new Error("Expected commune polygons");
+    expect(result.communes[0]?.environmentalRisk).toMatchObject({
       radiusKm: 25,
       status: "comparable",
+      provenance: "partially-estimated",
       scoredNeighborCount: 3,
-      totalNeighborCount: 3
+      totalNeighborCount: 3,
+      publishedOnlyNeighborCount: 0,
+      partiallyEstimatedNeighborCount: 3,
+      estimatedOnlyNeighborCount: 0
     });
+  });
+
+  it("returns all matched polygons when the viewport is within the feature limit", async () => {
+    const rows = Array.from({ length: 2500 }, (_, index) => rawCityRow({
+      insee_code: String(index).padStart(5, "0"),
+      visible_feature_count: "2500"
+    }));
+    const db = { query: vi.fn().mockResolvedValue({ rows, rowCount: rows.length }) };
+    const params = parseNationalMapParams(mapParams({ zoom: "8" }));
+
+    const result = await searchNationalMap(db as never, params);
+
+    expect(result.level).toBe("commune");
+    if (result.level !== "commune") throw new Error("Expected commune polygons");
+    expect(result.requiresZoom).toBe(false);
+    expect(result.communes).toHaveLength(2500);
+    expect(result.communes[0].geometry.type).toBe("MultiPolygon");
   });
 
   it("does not calculate environmental scores for region or department groups", async () => {
@@ -357,6 +463,11 @@ describe("national map parameters", () => {
 function rawCityRow(overrides: Record<string, unknown> = {}) {
   return {
     snapshot_id: "17",
+    visible_feature_count: "1",
+    boundary_geojson: JSON.stringify({
+      type: "MultiPolygon",
+      coordinates: [[[[2, 46], [2, 46.01], [2.01, 46.01], [2.01, 46], [2, 46]]]]
+    }),
     insee_code: "33063",
     name: "Bordeaux",
     department_code: "33",
@@ -369,11 +480,14 @@ function rawCityRow(overrides: Record<string, unknown> = {}) {
     population_year: 2023,
     comparative_index: 54,
     comparative_index_status: "comparable",
-    comparative_index_confidence: "high",
-    basket_version: "residential-risk-v1",
-    published_basket_category_count: 6,
-    cohort_size: 150,
-    availability_mask: 63,
+    basket_version: "residential-risk-v2",
+    published_basket_category_count: 4,
+    estimated_basket_category_count: 2,
+    comparable_basket_category_count: 6,
+    minimum_reference_cohort_size: 150,
+    availability_mask: 15,
+    estimated_availability_mask: 48,
+    comparative_index_provenance: "partially-estimated",
     population_band: "100000-plus",
     published_category_count: 12,
     total_category_count: 15,

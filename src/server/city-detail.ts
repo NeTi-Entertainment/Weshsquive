@@ -96,10 +96,15 @@ select tc.*,
     case when tc.population is null or tc.population <= 0
       then 'population-unavailable' else 'insufficient-coverage' end
   ) as comparative_index_status,
-  tm.comparative_index_confidence, tm.availability_mask,
-  coalesce(tm.basket_version, 'residential-risk-v1') as basket_version,
+  tm.availability_mask,
+  coalesce(tm.estimated_availability_mask, 0) as estimated_availability_mask,
+  tm.basket_version,
   coalesce(tm.published_basket_category_count, 0) as published_basket_category_count,
-  coalesce(tm.cohort_size, 0) as cohort_size, tm.population_band,
+  coalesce(tm.estimated_basket_category_count, 0) as estimated_basket_category_count,
+  coalesce(tm.comparable_basket_category_count, 0) as comparable_basket_category_count,
+  coalesce(tm.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
+  coalesce(tm.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
+  tm.population_band,
   coalesce(category_data.categories, '[]'::jsonb) as categories
 from target_city tc
 left join target_metrics tm on true
@@ -242,10 +247,7 @@ type RawCityDetailRow = {
   snapshot_id: string; insee_code: string; name: string; department_code: string; department_name: string;
   region_code: string; region_name: string; latitude: string | null; longitude: string | null;
   population: number | null; population_year: number | null;
-  comparative_index_status: ComparativeIndexColumns["comparative_index_status"];
-  comparative_index_confidence: ComparativeIndexColumns["comparative_index_confidence"];
-  basket_version: string; published_basket_category_count: number; cohort_size: number;
-  population_band: string | null; categories: CategoryMetrics[];
+  categories: CategoryMetrics[];
 } & ComparativeIndexColumns & PublishedMetricsColumns;
 type RawHistoryRow = {
   category_code: string; category_label: string; year: number; incident_count: number | null;
@@ -266,6 +268,7 @@ type RawEnvironmentalRiskRow = {
   neighbor_insee_code: string | null;
   distance_km: number | null;
   comparative_index: number | null;
+  comparative_index_provenance: ComparativeIndex["provenance"];
 };
 
 export async function getCityDetail(db: Queryable, params: CityDetailParams): Promise<CityDetail | null> {
@@ -336,7 +339,8 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
       targetInseeCode: params.inseeCode,
       neighborInseeCode: item.neighbor_insee_code,
       distanceKm: Number(item.distance_km),
-      comparativeIndex: item.comparative_index
+      comparativeIndex: item.comparative_index,
+      comparativeIndexProvenance: item.comparative_index_provenance
     });
   }
   const coordinatesAvailable = environmentalResult.rows[0]?.target_coordinates_available ??

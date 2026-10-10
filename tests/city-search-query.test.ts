@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCitySearchQuery, parseCitySearchParams } from "../src/server/city-search";
+import {
+  buildCitySearchQuery,
+  parseCitySearchParams,
+  searchCities
+} from "../src/server/city-search";
 
 describe("parseCitySearchParams", () => {
   it("parses supported filters and applies safe paging defaults", () => {
@@ -59,6 +63,68 @@ describe("buildCitySearchQuery", () => {
     expect(query.text).toContain("rc.rate_denominator");
     expect(query.text).toContain("rc.insee_pop_millesime");
     expect(query.text).toContain("rc.insee_log_millesime");
+  });
+
+  it("maps the v2 index while keeping masked category complements private", async () => {
+    const category = {
+      code: "ssmsi-example",
+      label: "Exemple masqué",
+      incidentCount: null,
+      ratePer1000: null,
+      countUnit: "faits",
+      rateDenominator: "population" as const,
+      populationDenominator: 1044,
+      populationDenominatorYear: 2023,
+      housingDenominator: null,
+      housingDenominatorYear: null,
+      publicationStatus: "masked" as const
+    };
+    const db = {
+      query: async () => ({
+        rows: [{
+          insee_code: "95584",
+          name: "Seugy",
+          department_code: "95",
+          department_name: "Val-d'Oise",
+          region_code: "11",
+          region_name: "Ile-de-France",
+          latitude: "49.121",
+          longitude: "2.391",
+          population: 1044,
+          population_year: 2023,
+          published_category_count: 0,
+          total_category_count: 1,
+          coverage_ratio: "0",
+          comparative_index: 68,
+          comparative_index_status: "comparable",
+          basket_version: "residential-risk-v2",
+          published_basket_category_count: 2,
+          estimated_basket_category_count: 4,
+          comparable_basket_category_count: 6,
+          availability_mask: 3,
+          estimated_availability_mask: 60,
+          minimum_reference_cohort_size: 80,
+          comparative_index_provenance: "partially-estimated",
+          population_band: "1000-4999",
+          categories: [category]
+        }],
+        rowCount: 1
+      })
+    };
+
+    const [result] = await searchCities(db as never, { year: 2025, limit: 25, offset: 0 });
+
+    expect(result.comparativeIndex).toMatchObject({
+      basketVersion: "residential-risk-v2",
+      provenance: "partially-estimated",
+      publishedComponentCount: 2,
+      estimatedComponentCount: 4,
+      comparableComponentCount: 6,
+      minimumReferenceCohortSize: 80
+    });
+    expect(result.categories[0]).toEqual(category);
+    expect(result.categories[0]).not.toHaveProperty("complementInfoNombre");
+    expect(result.categories[0]).not.toHaveProperty("complementInfoTaux");
   });
 
   it("builds a parameterized search with geography and comparative-index filters", () => {
@@ -190,8 +256,14 @@ describe("buildCitySearchQuery", () => {
     expect(query.text).toContain("search_metrics_city_year_comparative");
     expect(query.text).not.toContain("city_year_comparative_metrics");
     expect(query.text).toContain("metrics.comparative_index");
-    expect(query.text).toContain("metrics.comparative_index_confidence");
-    expect(query.text).toContain("metrics.cohort_size");
+    expect(query.text).not.toContain("metrics.comparative_index_confidence");
+    expect(query.text).toContain("metrics.estimated_basket_category_count");
+    expect(query.text).toContain("metrics.comparable_basket_category_count");
+    expect(query.text).toContain("metrics.estimated_availability_mask");
+    expect(query.text).toContain("metrics.minimum_reference_cohort_size");
+    expect(query.text).toContain("metrics.comparative_index_provenance");
+    expect(query.text).toContain("metrics.basket_version");
+    expect(query.text).not.toContain("coalesce(metrics.basket_version");
     expect(query.text).not.toContain("percent_rank()");
     expect(query.text).not.toMatch(/published_incident_count|partial_rate_per_1000/i);
   });

@@ -12,9 +12,11 @@ function neighbor(
   neighborInseeCode: string,
   distanceKm: number,
   comparativeIndex: number | null,
-  targetInseeCode = "95584"
+  targetInseeCode = "95584",
+  comparativeIndexProvenance: EnvironmentalNeighborRow["comparativeIndexProvenance"] =
+    comparativeIndex === null ? "unavailable" : "published-only"
 ): EnvironmentalNeighborRow {
-  return { targetInseeCode, neighborInseeCode, distanceKm, comparativeIndex };
+  return { targetInseeCode, neighborInseeCode, distanceKm, comparativeIndex, comparativeIndexProvenance };
 }
 
 describe("environmental risk summaries", () => {
@@ -29,8 +31,12 @@ describe("environmental risk summaries", () => {
       radiusKm: 25,
       value: 40,
       status: "comparable",
+      provenance: "published-only",
       scoredNeighborCount: 3,
       totalNeighborCount: 3,
+      publishedOnlyNeighborCount: 3,
+      partiallyEstimatedNeighborCount: 0,
+      estimatedOnlyNeighborCount: 0,
       weightedCoverageRatio: 1
     });
   });
@@ -60,6 +66,49 @@ describe("environmental risk summaries", () => {
     expect(summary.scoredNeighborCount).toBe(3);
     expect(summary.totalNeighborCount).toBe(4);
     expect(summary.weightedCoverageRatio).toBe(0.75);
+    expect(summary.publishedOnlyNeighborCount).toBe(3);
+    expect(summary.provenance).toBe("published-only");
+  });
+
+  it("marks a neighborhood with any estimated score as partially estimated", () => {
+    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
+      neighbor("01001", 0, 20),
+      neighbor("01002", 0, 40, "95584", "partially-estimated"),
+      neighbor("01003", 0, 60, "95584", "estimated-only"),
+      neighbor("01004", 0, null)
+    ]);
+
+    expect(summary.value).toBe(40);
+    expect(summary.provenance).toBe("partially-estimated");
+    expect(summary.publishedOnlyNeighborCount).toBe(1);
+    expect(summary.partiallyEstimatedNeighborCount).toBe(1);
+    expect(summary.estimatedOnlyNeighborCount).toBe(1);
+  });
+
+  it("counts estimated-only neighbors and labels an entirely estimated environment", () => {
+    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
+      neighbor("01001", 0, 20, "95584", "estimated-only"),
+      neighbor("01002", 0, 40, "95584", "estimated-only"),
+      neighbor("01003", 0, 60, "95584", "estimated-only")
+    ]);
+
+    expect(summary.value).toBe(40);
+    expect(summary.provenance).toBe("partially-estimated");
+    expect(summary.publishedOnlyNeighborCount).toBe(0);
+    expect(summary.partiallyEstimatedNeighborCount).toBe(0);
+    expect(summary.estimatedOnlyNeighborCount).toBe(3);
+  });
+
+  it("does not count estimated provenance when the score is unavailable", () => {
+    const summary = summarizeEnvironmentalRisk("95584", 25, true, [
+      neighbor("01001", 0, 20),
+      neighbor("01002", 0, 40),
+      neighbor("01003", 0, null, "95584", "estimated-only")
+    ]);
+
+    expect(summary.publishedOnlyNeighborCount).toBe(2);
+    expect(summary.estimatedOnlyNeighborCount).toBe(0);
+    expect(summary.provenance).toBe("unavailable");
   });
 
   it("does not expose a value with fewer than three scored neighbors", () => {
@@ -155,8 +204,12 @@ describe("environmental risk summaries", () => {
       radiusKm: 25,
       value: null,
       status: "coordinates-unavailable",
+      provenance: "unavailable",
       scoredNeighborCount: 0,
       totalNeighborCount: 0,
+      publishedOnlyNeighborCount: 0,
+      partiallyEstimatedNeighborCount: 0,
+      estimatedOnlyNeighborCount: 0,
       weightedCoverageRatio: null
     });
   });
@@ -184,6 +237,7 @@ describe("environmental risk queries", () => {
     expect(query.text).toContain("c.insee_code <> target.insee_code");
     expect(query.text).toContain("metrics.year = $2");
     expect(query.text).toContain("metrics.snapshot_id = $3");
+    expect(query.text).toContain("metrics.comparative_index_provenance");
     expect(query.text).toContain("left join search_metrics_city_year_comparative");
     expect(query.text).toMatch(/st_distance[\s\S]*<|<[^\n]*st_distance/i);
   });
@@ -195,6 +249,7 @@ describe("environmental risk queries", () => {
     expect(query.text).toContain("unnest($1::varchar[])");
     expect(query.text).toContain("metrics.year = $2");
     expect(query.text).toContain("metrics.snapshot_id = $3");
+    expect(query.text).toContain("metrics.comparative_index_provenance");
     expect(query.text).toContain("st_dwithin");
     expect(query.text).toContain("c.insee_code <> targets.insee_code");
     expect(query.text).toContain("left join search_metrics_city_year_comparative");

@@ -1,3 +1,12 @@
+import {
+  comparativeIndexProvenanceLabel,
+  type ComparativeIndex,
+  type ComparativeIndexCompleteness,
+  type ComparativeIndexStatus
+} from "@/server/comparative-index";
+
+export { comparativeIndexProvenanceLabel };
+
 export type CitySearchFormState = {
   year: string;
   regionCode: string;
@@ -56,17 +65,7 @@ export type CitySearchResult = {
     totalCategoryCount: number;
     coverageRatio: string | number | null;
   };
-  comparativeIndex: {
-    value: number | null;
-    status: "comparable" | "insufficient-coverage" | "cohort-too-small" | "population-unavailable";
-    completeness: "high" | "medium" | "low" | null;
-    basketVersion: string;
-    publishedBasketCategoryCount: number;
-    basketCategoryCount: number;
-    basketAvailability: Array<{ code: string; label: string; available: boolean }>;
-    cohortSize: number;
-    populationBand: string | null;
-  };
+  comparativeIndex: ComparativeIndex;
   categories: CitySearchCategory[];
 };
 
@@ -135,7 +134,6 @@ export function buildCitySearchUrl(state: CitySearchFormState): string {
 
   return `/api/cities/search?${params.toString()}`;
 }
-
 export function collectCategoryColumns(results: CitySearchResult[]): CitySearchCategory[] {
   const byCode = new Map<string, CitySearchCategory>();
 
@@ -311,8 +309,48 @@ export function formatComparativeIndex(value: number | null): string {
   return value === null ? "Non comparable" : `${value} / 100`;
 }
 
+export function describeComparativeIndex(index: ComparativeIndex): string {
+  const provenance = comparativeIndexProvenanceLabel(index.provenance);
+  const componentCounts = comparativeIndexComponentCountLabel(index);
+  const populationBand = formatComparativeIndexPopulationBand(index.populationBand);
+  const referenceCount = index.minimumReferenceCohortSize;
+  const referenceLabel = referenceCount === 0
+    ? "indisponible"
+    : `${formatInteger(referenceCount)} commune${referenceCount > 1 ? "s" : ""}`;
+  const estimationNote = index.estimatedComponentCount > 0
+    ? " Les valeurs estimées sont des moyennes départementales SSMSI des communes masquées, pas des statistiques communales publiées."
+    : "";
+
+  return `${provenance} · ${componentCounts} · tranche ${populationBand} · cohorte publiée minimale : ${referenceLabel}.${estimationNote}`;
+}
+
+export function comparativeIndexComponentCountLabel(index: ComparativeIndex): string {
+  return `Composantes disponibles dans le panier : ${index.publishedComponentCount} publiées, ${index.estimatedComponentCount} estimées · composantes effectivement comparées dans l’indice : ${index.comparableComponentCount}`;
+}
+
+export function formatComparativeIndexPopulationBand(band: string | null): string {
+  switch (band) {
+    case "under-1000":
+      return "moins de 1 000 habitants";
+    case "1000-4999":
+      return `1 000 à 4 999 habitants`;
+    case "5000-9999":
+      return "5 000 à 9 999 habitants";
+    case "10000-49999":
+      return "10 000 à 49 999 habitants";
+    case "50000-plus":
+      return "50 000 habitants et plus";
+    case "50000-99999":
+      return "50 000 à 99 999 habitants";
+    case "100000-plus":
+      return "100 000 habitants et plus";
+    default:
+      return "inconnue";
+  }
+}
+
 export function comparativeIndexCompletenessLabel(
-  completeness: NonNullable<CitySearchResult["comparativeIndex"]["completeness"]>
+  completeness: ComparativeIndexCompleteness
 ): string {
   const level = completeness === "high" ? "élevée" : completeness === "medium" ? "moyenne" : "faible";
   return `Complétude de l’indice : ${level}`;
@@ -341,27 +379,24 @@ export function formatComparisonCoverage(published: number, total: number): stri
 }
 
 export function describeBasketAvailability(
-  availability: CitySearchResult["comparativeIndex"]["basketAvailability"]
+  availability: ComparativeIndex["basketAvailability"]
 ): string {
-  const available = availability.filter((category) => category.available);
+  const published = availability.filter((category) => category.available && !category.estimated);
+  const estimated = availability.filter((category) => category.available && category.estimated);
   const unavailable = availability.filter((category) => !category.available);
-  const included = available.length > 0
-    ? available.map((category) => category.label).join(", ")
-    : "aucun indicateur publié";
-  const missing = unavailable.length > 0
-    ? unavailable.map((category) => category.label).join(", ")
-    : "aucun";
+  const labels = (categories: typeof availability) =>
+    categories.length > 0 ? categories.map((category) => category.label).join(", ") : "aucune";
 
-  return `Retenus: ${included}. Non publiés: ${missing}.`;
+  return `Publiées : ${labels(published)}. Estimées : ${labels(estimated)}. Indisponibles : ${labels(unavailable)}.`;
 }
 
 export function comparativeIndexStatusLabel(
-  status: CitySearchResult["comparativeIndex"]["status"]
+  status: ComparativeIndexStatus
 ): string {
   switch (status) {
     case "comparable":
       return "Comparable";
-    case "cohort-too-small":
+    case "reference-cohort-too-small":
       return "Groupe trop petit";
     case "population-unavailable":
       return "Population indisponible";

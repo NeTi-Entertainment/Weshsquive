@@ -7,19 +7,21 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildCitySearchUrl,
   collectCategoryColumns,
-  comparativeIndexCompletenessLabel,
+  comparativeIndexProvenanceLabel,
+  comparativeIndexComponentCountLabel,
   defaultSearchForm,
+  describeComparativeIndex,
   findCategory,
   formatComparativeIndex,
   formatCoverage,
   formatCategoryRate,
   formatInteger,
   formatPopulation,
+  formatComparativeIndexPopulationBand,
   getComparativeIndexClassName,
   getNextOffset,
   getPreviousOffset,
   getSortStateForColumn,
-  comparativeIndexStatusLabel,
   describeBasketAvailability,
   updateSortForColumn,
   type CitySearchFormState,
@@ -372,7 +374,7 @@ export default function CitySearchPage() {
         ) : (
           <div>
             <strong>Carte · filtres actifs</strong>
-            <span>Les points sont limités à la zone visible et suivent le niveau de zoom.</span>
+            <span>Les communes sont colorées par contour, à l’échelle adaptée au zoom et au champ visible.</span>
           </div>
         )}
         <div className="view-switch" role="group" aria-label="Mode d’affichage">
@@ -579,14 +581,14 @@ export default function CitySearchPage() {
                 </td>
                 <td
                   className={getComparativeIndexClassName(result.comparativeIndex.value)}
-                  title={`${comparativeIndexStatusLabel(result.comparativeIndex.status)} · tranche ${result.comparativeIndex.populationBand ?? "inconnue"} · ${result.comparativeIndex.publishedBasketCategoryCount}/${result.comparativeIndex.basketCategoryCount} indicateurs · ${result.comparativeIndex.cohortSize} communes comparables · ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
-                  aria-label={`Indice ${formatComparativeIndex(result.comparativeIndex.value)}. ${comparativeIndexStatusLabel(result.comparativeIndex.status)}. Tranche ${result.comparativeIndex.populationBand ?? "inconnue"}. Cohorte de ${result.comparativeIndex.cohortSize} communes. ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
+                  title={`${describeComparativeIndex(result.comparativeIndex)} ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
+                  aria-label={`Indice ${formatComparativeIndex(result.comparativeIndex.value)}. ${describeComparativeIndex(result.comparativeIndex)} ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
                 >
                   <strong>{formatComparativeIndex(result.comparativeIndex.value)}</strong>
+                  <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance)}</span>
+                  <span>{comparativeIndexComponentCountLabel(result.comparativeIndex)}</span>
                   <span>
-                    {result.comparativeIndex.completeness
-                      ? comparativeIndexCompletenessLabel(result.comparativeIndex.completeness)
-                      : comparativeIndexStatusLabel(result.comparativeIndex.status)}
+                    {formatComparativeIndexPopulationBand(result.comparativeIndex.populationBand)} · cohorte publiée minimale : {result.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(result.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
                   </span>
                 </td>
                 {categoryColumns.map((category) => {

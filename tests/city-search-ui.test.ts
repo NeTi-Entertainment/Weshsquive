@@ -4,6 +4,11 @@ import {
   buildCitySearchUrl,
   collectCategoryColumns,
   comparativeIndexCompletenessLabel,
+  comparativeIndexComponentCountLabel,
+  comparativeIndexProvenanceLabel,
+  comparativeIndexStatusLabel,
+  describeComparativeIndex,
+  describeBasketAvailability,
   defaultSearchForm,
   findCategory,
   formatCategoryRate,
@@ -25,6 +30,74 @@ describe("comparativeIndexCompletenessLabel", () => {
     expect(comparativeIndexCompletenessLabel("high")).toBe("Complétude de l’indice : élevée");
     expect(comparativeIndexCompletenessLabel("medium")).toBe("Complétude de l’indice : moyenne");
     expect(comparativeIndexCompletenessLabel("low")).toBe("Complétude de l’indice : faible");
+  });
+});
+
+describe("comparative index provenance presentation", () => {
+  it("uses the four approved French provenance labels", () => {
+    expect([
+      comparativeIndexProvenanceLabel("published-only"),
+      comparativeIndexProvenanceLabel("partially-estimated"),
+      comparativeIndexProvenanceLabel("estimated-only"),
+      comparativeIndexProvenanceLabel("unavailable")
+    ]).toEqual([
+      "Données communales publiées",
+      "Partiellement estimé",
+      "Entièrement estimé",
+      "Indice indisponible"
+    ]);
+  });
+
+  it("qualifies the score with component counts, population band and published reference size", () => {
+    expect(describeComparativeIndex({
+      value: 60,
+      status: "comparable",
+      provenance: "partially-estimated",
+      completeness: "high",
+      basketVersion: "residential-risk-v2",
+      publishedComponentCount: 3,
+      estimatedComponentCount: 3,
+      comparableComponentCount: 6,
+      minimumReferenceCohortSize: 50,
+      basketCategoryCount: 6,
+      basketAvailability: [],
+      populationBand: "1000-4999"
+    })).toBe(
+      "Partiellement estimé · Composantes disponibles dans le panier : 3 publiées, 3 estimées · composantes effectivement comparées dans l’indice : 6 · tranche 1 000 à 4 999 habitants · cohorte publiée minimale : 50 communes. Les valeurs estimées sont des moyennes départementales SSMSI des communes masquées, pas des statistiques communales publiées."
+    );
+  });
+
+  it("does not imply available components were all comparable", () => {
+    expect(comparativeIndexComponentCountLabel({
+      value: null,
+      status: "population-unavailable",
+      provenance: "unavailable",
+      completeness: null,
+      basketVersion: "residential-risk-v2",
+      publishedComponentCount: 6,
+      estimatedComponentCount: 0,
+      comparableComponentCount: 0,
+      minimumReferenceCohortSize: 0,
+      basketCategoryCount: 6,
+      basketAvailability: [],
+      populationBand: null
+    })).toBe("Composantes disponibles dans le panier : 6 publiées, 0 estimées · composantes effectivement comparées dans l’indice : 0");
+  });
+});
+
+describe("comparativeIndexStatusLabel", () => {
+  it("keeps the transitional cohort status readable while exposing the v2 status", () => {
+    expect(comparativeIndexStatusLabel("reference-cohort-too-small")).toBe("Groupe trop petit");
+  });
+});
+
+describe("describeBasketAvailability", () => {
+  it("distinguishes published, estimated and unavailable basket components", () => {
+    expect(describeBasketAvailability([
+      { code: "published", label: "Publié", available: true, estimated: false },
+      { code: "estimated", label: "Estimé", available: true, estimated: true },
+      { code: "missing", label: "Absent", available: false, estimated: false }
+    ])).toBe("Publiées : Publié. Estimées : Estimé. Indisponibles : Absent.");
   });
 });
 
@@ -79,14 +152,17 @@ describe("collectCategoryColumns", () => {
       comparativeIndex: {
         value: 80,
         status: "comparable",
+        provenance: "partially-estimated",
         completeness: "high",
-        basketVersion: "residential-risk-v1",
-        publishedBasketCategoryCount: 3,
+        basketVersion: "residential-risk-v2",
+        publishedComponentCount: 3,
+        estimatedComponentCount: 1,
+        comparableComponentCount: 6,
+        minimumReferenceCohortSize: 42,
         basketCategoryCount: 4,
         basketAvailability: [
-          { code: "cambriolages", label: "Cambriolages", available: true }
+          { code: "cambriolages", label: "Cambriolages", available: true, estimated: false }
         ],
-        cohortSize: 42,
         populationBand: "1000-2499"
       },
       categories: [
@@ -135,12 +211,15 @@ describe("collectCategoryColumns", () => {
       comparativeIndex: {
         value: null,
         status: "insufficient-coverage",
+        provenance: "unavailable",
         completeness: null,
-        basketVersion: "residential-risk-v1",
-        publishedBasketCategoryCount: 0,
+        basketVersion: "residential-risk-v2",
+        publishedComponentCount: 0,
+        estimatedComponentCount: 0,
+        comparableComponentCount: 0,
+        minimumReferenceCohortSize: 0,
         basketCategoryCount: 4,
         basketAvailability: [],
-        cohortSize: 0,
         populationBand: null
       },
       categories: [

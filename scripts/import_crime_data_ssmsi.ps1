@@ -278,6 +278,42 @@ create temp table ssmsi_raw (
 
 $yearValidation
 
+do `$complement_status_guard`$
+begin
+    if exists (
+        select 1
+        from ssmsi_raw raw
+        where (raw.complement_info_nombre is not null or raw.complement_info_taux is not null)
+          and raw.est_diffuse is distinct from 'ndiff'
+          and (
+              $sourceYearLiteral is null
+              or (raw.annee ~ '^[0-9]{4}$' and raw.annee::integer = $sourceYearLiteral)
+          )
+    ) then
+        raise exception 'SSMSI complements are only valid for ndiff rows';
+    end if;
+
+    if exists (
+        select 1
+        from ssmsi_raw raw
+        join cities city on city.insee_code = raw.codgeo_2026
+        where raw.est_diffuse = 'ndiff'
+          and (raw.complement_info_nombre is not null or raw.complement_info_taux is not null)
+          and (
+              $sourceYearLiteral is null
+              or (raw.annee ~ '^[0-9]{4}$' and raw.annee::integer = $sourceYearLiteral)
+          )
+        group by city.department_code, raw.annee, raw.indicateur
+        having count(distinct (
+            replace(nullif(raw.complement_info_nombre, 'NA'), ',', '.')::numeric,
+            replace(nullif(raw.complement_info_taux, 'NA'), ',', '.')::numeric
+        )) > 1
+    ) then
+        raise exception 'SSMSI masked department/year/category groups may contain at most one complement pair';
+    end if;
+end
+`$complement_status_guard`$;
+
 $yearReplacement
 
 with import_batch as (

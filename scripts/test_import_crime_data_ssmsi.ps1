@@ -85,6 +85,15 @@ function Apply-Migrations {
         docker exec -e PGPASSWORD=postgres $ContainerName `
             psql -v ON_ERROR_STOP=1 -U postgres -d $DatabaseName -f "/tmp/$($migration.Name)" `
             | Out-Null
+
+        if ($migration.Name -eq "003_ssmsi_units_and_denominators.sql") {
+            docker exec -e PGPASSWORD=postgres $ContainerName `
+                psql -v ON_ERROR_STOP=1 -U postgres -d $DatabaseName -f "/tmp/$($migration.Name)" `
+                | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "The SSMSI metadata migration should be safely repeatable."
+            }
+        }
     }
 }
 
@@ -96,7 +105,13 @@ try {
     @'
 CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;insee_pop;insee_pop_millesime;insee_log;insee_log_millesime;complement_info_nombre;complement_info_taux
 75056;2025;Cambriolages de logement;Infraction;4;8,0000000;diff;1044;2023;500;2023;NA;NA
+75056;2025;Vols de véhicule;Infraction;3;2,8736000;diff;1044;2023;500;2023;NA;NA
+75056;2025;Vols dans les véhicules;Infraction;5;4,7893000;diff;1044;2023;500;2023;NA;NA
+75056;2025;Destructions et dégradations volontaires;Infraction;6;5,7471000;diff;1044;2023;500;2023;NA;NA
+75056;2025;Violences physiques hors cadre familial;Victime;7;6,7050000;diff;1044;2023;500;2023;NA;NA
+75056;2025;Trafic de stupéfiants;Mis en cause;8;7,6628000;diff;1044;2023;500;2023;NA;NA
 75056;2025;Violences sexuelles;Victime;NA;NA;ndiff;1044;2023;500;2023;2,0000000;1,9000000
+75001;2025;Violences sexuelles;Victime;NA;NA;ndiff;1200;2023;600;2023;2,0;1,9000
 75056;2025;Usage de stupéfiants;Auteur;0;0,0000000;diff;1044;2023;500;2023;NA;NA
 75056;2025;Indicateur futur non documente;Infraction;2;1,9157000;diff;1044;2023;500;2023;NA;NA
 69123;2024;Cambriolages de logement;Infraction;8;1,5400000;diff;519127;2023;280000;2023;NA;NA
@@ -108,6 +123,17 @@ CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;
 75056;2025;Cambriolages de logement;Infraction;5;9,0000000;diff;1044;2023;500;2023;NA;NA
 75056;2025;Violences sexuelles;Victime;NA;NA;ndiff;1044;2023;500;2023;2,0000000;1,9000000
 '@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-revision.csv") -Encoding utf8
+
+    @'
+CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;insee_pop;insee_pop_millesime;insee_log;insee_log_millesime;complement_info_nombre;complement_info_taux
+75056;2025;Cambriolages de logement;Infraction;4;8,0000000;diff;1044;2023;500;2023;2,0000000;4,0000000
+'@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-invalid-published-complement.csv") -Encoding utf8
+
+    @'
+CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;insee_pop;insee_pop_millesime;insee_log;insee_log_millesime;complement_info_nombre;complement_info_taux
+75056;2025;Violences sexuelles;Victime;NA;NA;ndiff;1044;2023;500;2023;2,0000000;1,9000000
+75001;2025;Violences sexuelles;Victime;NA;NA;ndiff;1200;2023;600;2023;3,0000000;2,1000000
+'@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-duplicate-department-complement.csv") -Encoding utf8
 
     docker run `
         --name $ContainerName `
@@ -122,15 +148,6 @@ CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;
 
     Apply-Migrations
 
-    $latestMigration = Join-Path $migrationDir "003_ssmsi_units_and_denominators.sql"
-    docker cp $latestMigration "${ContainerName}:/tmp/003_ssmsi_units_and_denominators.sql"
-    docker exec -e PGPASSWORD=postgres $ContainerName `
-        psql -v ON_ERROR_STOP=1 -U postgres -d $DatabaseName -f "/tmp/003_ssmsi_units_and_denominators.sql" `
-        | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "The SSMSI metadata migration should be safely repeatable."
-    }
-
     Invoke-Psql -Sql @"
 insert into regions (code, name, source)
 values ('11', 'Ile-de-France', 'fixture'), ('84', 'Auvergne-Rhone-Alpes', 'fixture');
@@ -141,6 +158,7 @@ values ('75', 'Paris', '11', 'fixture'), ('69', 'Rhone', '84', 'fixture');
 insert into cities (insee_code, name, department_code, region_code, source, reference_population, population_year)
 values
     ('75056', 'Paris', '75', '11', 'fixture', 1044, 2023),
+    ('75001', 'Second Paris fixture', '75', '11', 'fixture', 1200, 2023),
     ('69123', 'Lyon', '69', '84', 'fixture', 519127, 2023);
 "@ | Out-Null
 
@@ -160,26 +178,26 @@ select count(*) from (
     (select city_insee_code, year, category_id, category_code, category_label,
         incident_count, rate_per_1000, publication_status::text, count_unit,
         rate_denominator_reference, rate_denominator, insee_pop, insee_pop_millesime,
-        insee_log, insee_log_millesime
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux
      from search_metrics_city_year_category
      where snapshot_id = (select snapshot_id from search_metrics_active where singleton)
      except all
      select city_insee_code, year, category_id, category_code, category_label,
         incident_count, rate_per_1000, publication_status::text, count_unit,
         rate_denominator_reference, rate_denominator, insee_pop, insee_pop_millesime,
-        insee_log, insee_log_millesime
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux
      from city_year_category_metrics)
     union all
     (select city_insee_code, year, category_id, category_code, category_label,
         incident_count, rate_per_1000, publication_status::text, count_unit,
         rate_denominator_reference, rate_denominator, insee_pop, insee_pop_millesime,
-        insee_log, insee_log_millesime
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux
      from city_year_category_metrics
      except all
      select city_insee_code, year, category_id, category_code, category_label,
         incident_count, rate_per_1000, publication_status::text, count_unit,
         rate_denominator_reference, rate_denominator, insee_pop, insee_pop_millesime,
-        insee_log, insee_log_millesime
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux
      from search_metrics_city_year_category
      where snapshot_id = (select snapshot_id from search_metrics_active where singleton))
 ) differences;
@@ -193,26 +211,34 @@ select count(*) from (
 select count(*) from (
     (select city_insee_code, year, population, population_year, population_band,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, comparative_index_status,
+        published_basket_category_count, cohort_size, estimated_basket_category_count,
+        comparable_basket_category_count, estimated_availability_mask,
+        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
         comparative_index, comparative_index_confidence, basket_version
      from search_metrics_city_year_comparative
      where snapshot_id = (select snapshot_id from search_metrics_active where singleton)
      except all
      select city_insee_code, year, population, population_year, population_band,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, comparative_index_status,
+        published_basket_category_count, cohort_size, estimated_basket_category_count,
+        comparable_basket_category_count, estimated_availability_mask,
+        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
         comparative_index, comparative_index_confidence, basket_version
      from city_year_comparative_metrics)
     union all
     (select city_insee_code, year, population, population_year, population_band,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, comparative_index_status,
+        published_basket_category_count, cohort_size, estimated_basket_category_count,
+        comparable_basket_category_count, estimated_availability_mask,
+        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
         comparative_index, comparative_index_confidence, basket_version
      from city_year_comparative_metrics
      except all
      select city_insee_code, year, population, population_year, population_band,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, comparative_index_status,
+        published_basket_category_count, cohort_size, estimated_basket_category_count,
+        comparable_basket_category_count, estimated_availability_mask,
+        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
         comparative_index, comparative_index_confidence, basket_version
      from search_metrics_city_year_comparative
      where snapshot_id = (select snapshot_id from search_metrics_active where singleton))
@@ -275,12 +301,12 @@ for each row execute function fail_search_snapshot_for_test();
 
     Assert-SqlEquals `
         -Sql "select count(*) from crime_categories;" `
-        -Expected "4" `
+        -Expected "9" `
         -Message "Crime categories should be imported once"
 
     Assert-SqlEquals `
         -Sql "select count(*) from crime_stats;" `
-        -Expected "4" `
+        -Expected "10" `
         -Message "Crime stats import should be idempotent, filtered by year and skip unknown cities"
 
     Assert-SqlEquals `
@@ -325,6 +351,16 @@ for each row execute function fail_search_snapshot_for_test();
         -Message "Published SSMSI values should keep count and rate"
 
     Assert-SqlEquals `
+        -Sql "select count(*) || ':' || count(*) filter (where cc.label = 'Cambriolages de logement' and cc.rate_denominator_reference = 'housing' and cs.rate_denominator = 'housing') || ':' || count(*) filter (where cc.label <> 'Cambriolages de logement' and cc.rate_denominator_reference = 'population' and cs.rate_denominator = 'population') from crime_stats cs join crime_categories cc on cc.id = cs.category_id where cs.city_insee_code = '75056' and cs.year = 2025 and cc.code in ('ssmsi-78384436563146dc6167ea53b7b5e0cd','ssmsi-74a195792dd119f60822e61df3587522','ssmsi-d3e9d2e40d72b8850d5283eb73bdc928','ssmsi-bf6b19b3e53b90f6594ec2e8303c5778','ssmsi-a2601b900aa009440624697e1d74e4a9','ssmsi-bdbeb8ca73503f8264dab16159795328');" `
+        -Expected "6:1:5" `
+        -Message "All six comparative basket categories must use the official denominator reference"
+
+    Assert-SqlEquals `
+        -Sql "select count(*) from crime_stats where publication_status = 'published' and (complement_info_nombre is not null or complement_info_taux is not null);" `
+        -Expected "0" `
+        -Message "Published diff rows must not retain complement values"
+
+    Assert-SqlEquals `
         -Sql "select count_unit || ':' || insee_pop || ':' || insee_pop_millesime || ':' || insee_log || ':' || insee_log_millesime || ':' || rate_denominator from crime_stats cs join crime_categories cc on cc.id = cs.category_id where city_insee_code = '75056' and year = 2025 and cc.label = 'Cambriolages de logement';" `
         -Expected "Infraction:1044:2023:500:2023:housing" `
         -Message "Official unit, denominators, vintages, and known housing base should be retained"
@@ -333,6 +369,11 @@ for each row execute function fail_search_snapshot_for_test();
         -Sql "select (incident_count is null)::text || ':' || (rate_per_1000 is null)::text || ':' || publication_status || ':' || complement_info_nombre || ':' || complement_info_taux || ':' || count_unit from crime_stats cs join crime_categories cc on cc.id = cs.category_id where city_insee_code = '75056' and year = 2025 and cc.label = 'Violences sexuelles';" `
         -Expected "true:true:masked:2.000000:1.900000:Victime" `
         -Message "Masked statistics should stay null while complements and unit remain separate metadata"
+
+    Assert-SqlEquals `
+        -Sql "select count(*) || ':' || count(distinct (cs.complement_info_nombre, cs.complement_info_taux)) from crime_stats cs join crime_categories cc on cc.id = cs.category_id join cities city on city.insee_code = cs.city_insee_code where city.department_code = '75' and cs.year = 2025 and cc.label = 'Violences sexuelles' and cs.publication_status = 'masked';" `
+        -Expected "2:1" `
+        -Message "Repeated normalized department complement pairs must be accepted for multiple masked communes"
 
     Assert-SqlEquals `
         -Sql "select incident_count || ':' || rate_per_1000 || ':' || publication_status from crime_stats cs join crime_categories cc on cc.id = cs.category_id where city_insee_code = '75056' and year = 2025 and cc.label = 'Usage de stupéfiants';" `
@@ -346,8 +387,44 @@ for each row execute function fail_search_snapshot_for_test();
 
     Assert-SqlEquals `
         -Sql "select published_basket_category_count from city_year_comparative_metrics where city_insee_code = '75056' and year = 2025;" `
-        -Expected "1" `
+        -Expected "6" `
         -Message "Unknown or non-basket categories must not increase the comparative-index basket"
+
+    $batchCountBeforeInvalidComplements = (Invoke-Psql -Sql "select count(*) from import_batches where source_system = 'test-ssmsi';" -TuplesOnly).Trim()
+    foreach ($invalidFixture in @(
+        "ssmsi-invalid-published-complement.csv",
+        "ssmsi-duplicate-department-complement.csv"
+    )) {
+        $invalidComplementFailed = $false
+        try {
+            & $crimeScript `
+                -ContainerName $ContainerName `
+                -DatabaseName $DatabaseName `
+                -DatabaseUser "postgres" `
+                -DatabasePassword "postgres" `
+                -CrimeFileUrl (Join-Path $fixtureDir $invalidFixture) `
+                -Year 2025 `
+                -GeographyYear 2027 `
+                -Source "test-ssmsi" `
+                -DeferMetricsRefresh
+        }
+        catch {
+            $invalidComplementFailed = $true
+        }
+
+        if (-not $invalidComplementFailed) {
+            throw "Invalid SSMSI complements from $invalidFixture should fail before import commit."
+        }
+
+        Assert-SqlEquals `
+            -Sql "select count(*) from import_batches where source_system = 'test-ssmsi';" `
+            -Expected $batchCountBeforeInvalidComplements `
+            -Message "Rejected SSMSI complements must not create an import batch"
+        Assert-SqlEquals `
+            -Sql "select count(*) from crime_stats where source = 'test-ssmsi' and year = 2025;" `
+            -Expected "10" `
+            -Message "Rejected SSMSI complements must preserve the prior annual data"
+    }
 
     Assert-SqlEquals `
         -Sql "select count(*) from pg_attribute where attrelid = 'city_year_comparative_metrics'::regclass and attname in ('published_incident_count','partial_rate_per_1000') and not attisdropped;" `
@@ -378,7 +455,7 @@ for each row execute function fail_search_snapshot_for_test();
 
     Assert-SqlEquals `
         -Sql "select count(*) from crime_stats;" `
-        -Expected "5" `
+        -Expected "11" `
         -Message "A different year should append history without overwriting prior years"
 
     Assert-SqlEquals `

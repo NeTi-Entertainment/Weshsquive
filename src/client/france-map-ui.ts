@@ -1,8 +1,13 @@
 import type { CitySearchFormState } from "@/client/city-search-ui";
-import { getNearbyMapPointColor, NEARBY_MAP_UNAVAILABLE_COLOR } from "@/client/nearby-map-ui";
+import {
+  getComparativeIndexVisualStyle,
+  getNearbyMapPointColor,
+  NEARBY_MAP_UNAVAILABLE_COLOR,
+  type ComparativeIndexVisualStyle
+} from "@/client/nearby-map-ui";
 import { getPropertyMarketColor } from "@/client/property-market-ui";
 import type { EnvironmentalRadiusKm } from "@/server/environmental-risk";
-import type { NationalMapPoint, NationalMapResult } from "@/server/national-map";
+import type { NationalMapGeometry, NationalMapPoint, NationalMapResult } from "@/server/national-map";
 import { getNationalMapLevel } from "@/shared/map-levels";
 import type { RentPropertyType, SalePropertyType } from "@/shared/property-market";
 
@@ -35,12 +40,32 @@ type NationalMapColorPoint = Extract<NationalMapFeature, { type: "commune" }>["p
 
 export const NATIONAL_MAP_GROUP_COLOR = "#526a7b";
 
+export function multiPolygonToLeafletPositions(
+  geometry: NationalMapGeometry
+): Array<Array<Array<[number, number]>>> {
+  return geometry.coordinates.map((polygon) => polygon.map((ring) => ring.map(([longitude, latitude]) => [
+    latitude,
+    longitude
+  ] as [number, number])));
+}
+
 export function getNationalMapFeatureColor(
   feature: NationalMapFeature,
   criterion: NationalMapCriterion
 ): string {
   if (feature.type !== "commune") return NATIONAL_MAP_GROUP_COLOR;
   return getNationalMapPointColor(feature.point, criterion);
+}
+
+export function getNationalMapFeatureVisualStyle(
+  feature: NationalMapFeature,
+  criterion: NationalMapCriterion
+): ComparativeIndexVisualStyle | null {
+  if (feature.type !== "commune" || criterion.type !== "comparativeIndex") return null;
+  return getComparativeIndexVisualStyle(
+    feature.point.comparativeIndex.value,
+    feature.point.comparativeIndex.provenance
+  );
 }
 
 export function getNationalMapPointColor(
@@ -62,7 +87,8 @@ export function getNationalMapPointColor(
 
 export function formatNationalMapResultCount(result: NationalMapResult): string {
   if (result.level === "commune") {
-    const count = result.points.length;
+    if (result.requiresZoom) return "Zoomez davantage pour afficher les communes de cette emprise";
+    const count = result.communes.length;
     return `${new Intl.NumberFormat("fr-FR").format(count)} ${count === 1 ? "commune" : "communes"} dans l’emprise visible`;
   }
   const count = result.groups.length;

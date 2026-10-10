@@ -242,9 +242,12 @@ city_metrics as (
     coalesce(metrics.total_category_count, 0) as total_category_count,
     metrics.coverage_ratio,
     coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
-    coalesce(metrics.cohort_size, 0) as cohort_size,
+    coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
+    coalesce(metrics.comparable_basket_category_count, 0) as comparable_basket_category_count,
+    coalesce(metrics.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
+    coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
+    coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
     metrics.comparative_index,
-    metrics.comparative_index_confidence,
     metrics.availability_mask,
     coalesce(
       metrics.comparative_index_status,
@@ -254,7 +257,7 @@ city_metrics as (
         else 'insufficient-coverage'
       end
     ) as comparative_index_status,
-    coalesce(metrics.basket_version, 'residential-risk-v1') as basket_version,
+    metrics.basket_version,
     metrics.population_band,
     sort_metrics.sort_category_incident_count,
     sort_metrics.sort_category_rate_per_1000
@@ -350,13 +353,6 @@ type RawCitySearchRow = {
   published_category_count: number;
   total_category_count: number;
   coverage_ratio: string | null;
-  comparative_index: number | null;
-  comparative_index_status: ComparativeIndexColumns["comparative_index_status"];
-  comparative_index_confidence: ComparativeIndexColumns["comparative_index_confidence"];
-  basket_version: string;
-  published_basket_category_count: number;
-  cohort_size: number;
-  population_band: string | null;
   categories: CitySearchRow["categories"];
 } & ComparativeIndexColumns & PublishedMetricsColumns;
 

@@ -6,6 +6,7 @@ import EnvironmentalRiskSection from "../app/environmental-risk-section";
 import { getComparativeIndexClassName } from "../src/client/city-search-ui";
 import {
   formatEnvironmentalRiskCoverage,
+  formatEnvironmentalRiskProvenance,
   formatEnvironmentalRiskStatus,
   formatEnvironmentalRiskValue
 } from "../src/client/environmental-risk-ui";
@@ -30,38 +31,60 @@ describe("environmental risk UI formatters", () => {
     expect(formatEnvironmentalRiskStatus("coordinates-unavailable")).toBe("Coordonnées indisponibles");
   });
 
+  it("distinguishes published-only environmental scores from estimates", () => {
+    expect(formatEnvironmentalRiskProvenance("published-only")).toBe("Basé sur des indices publiés");
+    expect(formatEnvironmentalRiskProvenance("partially-estimated")).toBe("Contient des indices estimés");
+    expect(formatEnvironmentalRiskProvenance("unavailable")).toBe("Indice indisponible");
+  });
+
   it("renders each radius and keeps unavailable scores uncolored", () => {
     const summaries: EnvironmentalRiskSummary[] = [
       {
         radiusKm: 25,
         value: 42.5,
         status: "comparable",
+        provenance: "partially-estimated",
         scoredNeighborCount: 4,
         totalNeighborCount: 10,
+        publishedOnlyNeighborCount: 2,
+        partiallyEstimatedNeighborCount: 1,
+        estimatedOnlyNeighborCount: 1,
         weightedCoverageRatio: 0.52
       },
       {
         radiusKm: 50,
         value: null,
         status: "insufficient-coverage",
+        provenance: "unavailable",
         scoredNeighborCount: 2,
         totalNeighborCount: 5,
+        publishedOnlyNeighborCount: 2,
+        partiallyEstimatedNeighborCount: 0,
+        estimatedOnlyNeighborCount: 0,
         weightedCoverageRatio: 0.4
       },
       {
         radiusKm: 100,
         value: null,
         status: "no-neighbors",
+        provenance: "unavailable",
         scoredNeighborCount: 0,
         totalNeighborCount: 0,
+        publishedOnlyNeighborCount: 0,
+        partiallyEstimatedNeighborCount: 0,
+        estimatedOnlyNeighborCount: 0,
         weightedCoverageRatio: null
       },
       {
         radiusKm: 200,
         value: null,
         status: "coordinates-unavailable",
+        provenance: "unavailable",
         scoredNeighborCount: 0,
         totalNeighborCount: 0,
+        publishedOnlyNeighborCount: 0,
+        partiallyEstimatedNeighborCount: 0,
+        estimatedOnlyNeighborCount: 0,
         weightedCoverageRatio: null
       }
     ];
@@ -75,6 +98,9 @@ describe("environmental risk UI formatters", () => {
     expect(markup).toContain("200 km");
     expect(markup).toContain("4 / 10");
     expect(markup).toContain("52 %");
+    expect(markup).toContain("Contient des indices estimés");
+    expect(markup).toContain("Publiés : 2 · partiellement estimés : 1 · entièrement estimés : 1");
+    expect(markup).toContain("Les compléments départementaux SSMSI servent uniquement de fallback estimatif pour les catégories masquées; ils ne sont jamais affichés comme des valeurs communales.");
     expect(markup).toContain("Non disponible");
     const unavailableScoreRow = markup.split("<th scope=\"row\">50 km</th>")[1]?.split("</tr>")[0] ?? "";
     expect(unavailableScoreRow).toContain("environmental-risk-score");

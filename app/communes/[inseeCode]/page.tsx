@@ -2,14 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
-  comparativeIndexStatusLabel,
-  comparativeIndexCompletenessLabel,
+  comparativeIndexComponentCountLabel,
+  comparativeIndexProvenanceLabel,
+  describeComparativeIndex,
   describeBasketAvailability,
   formatComparativeIndex,
   formatCategoryRate,
   formatCoverage,
   formatInteger,
   formatPopulation,
+  formatComparativeIndexPopulationBand,
   formatRate,
   formatComparisonCoverage,
   getComparativeIndexClassName
@@ -133,15 +135,19 @@ export default async function CityDetailPage({ params, searchParams }: CityDetai
         </article>
         <article
           className={`metric-card metric-card-index ${getComparativeIndexClassName(city.comparativeIndex.value)}`}
-          title={`${comparativeIndexStatusLabel(city.comparativeIndex.status)} · tranche ${city.comparativeIndex.populationBand ?? "inconnue"} · ${city.comparativeIndex.publishedBasketCategoryCount}/${city.comparativeIndex.basketCategoryCount} indicateurs · ${city.comparativeIndex.cohortSize} communes comparables · ${describeBasketAvailability(city.comparativeIndex.basketAvailability)}`}
-          aria-label={`Indice ${formatComparativeIndex(city.comparativeIndex.value)}. ${comparativeIndexStatusLabel(city.comparativeIndex.status)}. Tranche ${city.comparativeIndex.populationBand ?? "inconnue"}. Cohorte de ${city.comparativeIndex.cohortSize} communes. ${describeBasketAvailability(city.comparativeIndex.basketAvailability)}`}
+          title={`${describeComparativeIndex(city.comparativeIndex)} ${describeBasketAvailability(city.comparativeIndex.basketAvailability)}`}
+          aria-label={`Indice ${formatComparativeIndex(city.comparativeIndex.value)}. ${describeComparativeIndex(city.comparativeIndex)} ${describeBasketAvailability(city.comparativeIndex.basketAvailability)}`}
         >
           <span>Indice relatif calculé par l’application</span>
           <strong>{formatComparativeIndex(city.comparativeIndex.value)}</strong>
           <small>
-            {city.comparativeIndex.completeness
-              ? `${comparativeIndexCompletenessLabel(city.comparativeIndex.completeness)} · ${city.comparativeIndex.populationBand ?? "tranche inconnue"}`
-              : comparativeIndexStatusLabel(city.comparativeIndex.status)}
+            {comparativeIndexProvenanceLabel(city.comparativeIndex.provenance)}
+          </small>
+          <small>
+            {comparativeIndexComponentCountLabel(city.comparativeIndex)}
+          </small>
+          <small>
+            {formatComparativeIndexPopulationBand(city.comparativeIndex.populationBand)} · cohorte publiée minimale : {city.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(city.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
           </small>
           <small>Percentiles par catégorie; ce n’est pas un total officiel.</small>
         </article>

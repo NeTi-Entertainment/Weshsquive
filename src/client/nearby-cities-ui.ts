@@ -1,4 +1,5 @@
 import type { NearbyMapCriterion } from "@/client/nearby-map-ui";
+import type { ComparativeIndex } from "@/server/comparative-index";
 import {
   ENVIRONMENTAL_RADII_KM,
   type EnvironmentalRadiusKm
@@ -38,17 +39,7 @@ export type NearbyCityResult = {
     totalCategoryCount: number;
     coverageRatio: string | number | null;
   };
-  comparativeIndex: {
-    value: number | null;
-    status: "comparable" | "insufficient-coverage" | "cohort-too-small" | "population-unavailable";
-    completeness: "high" | "medium" | "low" | null;
-    basketVersion: string;
-    publishedBasketCategoryCount: number;
-    basketCategoryCount: number;
-    basketAvailability: Array<{ code: string; label: string; available: boolean }>;
-    cohortSize: number;
-    populationBand: string | null;
-  };
+  comparativeIndex: ComparativeIndex;
   selectedCategory: {
     code: string;
     label: string;

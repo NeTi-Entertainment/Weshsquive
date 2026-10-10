@@ -358,6 +358,7 @@ function New-AnnualImportPlan {
     [pscustomobject]@{
         ImportCrime = [bool]$importCrime
         ImportPopulation = [bool]$importPopulation
+        RefreshBoundaries = [bool]($importCrime -or $importPopulation)
         RefreshMetrics = [bool]$refreshMetrics
         ImportDvfYears = $importDvfYears
         ImportRentYear = $importRentYear

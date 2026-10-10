@@ -220,6 +220,7 @@ $plan = New-AnnualImportPlan `
     -ImportedPopulationLastModified "2024-12-01T00:00:00+01:00"
 Assert-Equal -Actual $plan.ImportCrime -Expected $true -Message "A newer SSMSI year should be scheduled"
 Assert-Equal -Actual $plan.ImportPopulation -Expected $true -Message "A newer Insee reference year should be scheduled"
+Assert-Equal -Actual $plan.RefreshBoundaries -Expected $true -Message "A geography refresh should schedule official commune contours"
 
 $unchangedPlan = New-AnnualImportPlan `
     -SsmiRelease $ssmiRelease `
@@ -234,6 +235,7 @@ $unchangedPlan = New-AnnualImportPlan `
     -LatestMetricsImportAt "2026-10-09T10:00:00Z"
 Assert-Equal -Actual $unchangedPlan.HasUpdates -Expected $false -Message "A matching year and source URL should be a no-op"
 Assert-Equal -Actual $unchangedPlan.RefreshMetrics -Expected $false -Message "An active snapshot at least as new as imported data should not rebuild monthly"
+Assert-Equal -Actual $unchangedPlan.RefreshBoundaries -Expected $false -Message "An unchanged source plan should not refresh commune contours"
 
 $staleMetricsPlan = New-AnnualImportPlan `
     -SsmiRelease $ssmiRelease `

@@ -55,8 +55,21 @@ describe("GET /api/cities/map", () => {
       level: "region",
       snapshotId: "17",
       groups: [{ type: "region", code: "75", communeCount: 1200 }],
-      points: []
+      communes: []
     });
     expect(body.groups[0]).not.toHaveProperty("comparativeIndex");
+  });
+
+  it("returns a commune polygon collection without legacy point markers", async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never);
+
+    const response = await GET(new Request(
+      "http://localhost/api/cities/map?year=2025&zoom=8&west=-5&south=41&east=10&north=52&criterion=comparativeIndex"
+    ));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ level: "commune", snapshotId: null, communes: [], requiresZoom: false });
+    expect(body).not.toHaveProperty("points");
   });
 });

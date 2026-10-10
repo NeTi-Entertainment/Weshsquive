@@ -5,19 +5,25 @@ import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaf
 import L from "leaflet";
 
 import {
-  comparativeIndexCompletenessLabel,
-  comparativeIndexStatusLabel,
+  comparativeIndexComponentCountLabel,
+  comparativeIndexProvenanceLabel,
+  describeComparativeIndex,
   formatCategoryRate,
   formatComparativeIndex,
+  formatComparativeIndexPopulationBand,
+  formatInteger,
   formatPopulation
 } from "@/client/city-search-ui";
 import {
   formatEnvironmentalRiskCoverage,
+  formatEnvironmentalRiskProvenance,
   formatEnvironmentalRiskStatus,
   formatEnvironmentalRiskValue
 } from "@/client/environmental-risk-ui";
 import {
+  formatEnvironmentalRiskNeighborProvenance,
   getNearbyMapPointColor,
+  getNearbyMapPointVisualStyle,
   type NearbyMapCriterion,
   type NearbyMapPoint
 } from "@/client/nearby-map-ui";
@@ -85,9 +91,13 @@ function MapMetric({ point, criterion }: { point: NearbyMapPoint; criterion: Nea
           Environnement {criterion.radiusKm} km : {formatEnvironmentalRiskValue(summary.value)}
         </strong>
         <span>{formatEnvironmentalRiskStatus(summary.status)}</span>
+        <span>{formatEnvironmentalRiskProvenance(summary.provenance)}</span>
         <span>
           {summary.scoredNeighborCount} / {summary.totalNeighborCount} communes voisines avec indice
         </span>
+        {formatEnvironmentalRiskNeighborProvenance(summary).map((line) => (
+          <span key={line}>{line}</span>
+        ))}
         <span>
           Couverture pondérée : {formatEnvironmentalRiskCoverage(summary.weightedCoverageRatio)}
         </span>
@@ -97,12 +107,17 @@ function MapMetric({ point, criterion }: { point: NearbyMapPoint; criterion: Nea
 
   return (
     <>
-      <strong>Indice comparatif : {formatComparativeIndex(point.comparativeIndex)}</strong>
+      <strong>Indice comparatif : {formatComparativeIndex(point.comparativeIndex.value)}</strong>
+      <span>{comparativeIndexProvenanceLabel(point.comparativeIndex.provenance)}</span>
+      <span>{comparativeIndexComponentCountLabel(point.comparativeIndex)}</span>
       <span>
-        {point.comparativeIndexCompleteness
-          ? comparativeIndexCompletenessLabel(point.comparativeIndexCompleteness)
-          : comparativeIndexStatusLabel(point.comparativeIndexStatus as "comparable" | "insufficient-coverage" | "cohort-too-small" | "population-unavailable")}
+        {formatComparativeIndexPopulationBand(point.comparativeIndex.populationBand)} · cohorte publiée minimale : {point.comparativeIndex.minimumReferenceCohortSize > 0 ? `${formatInteger(point.comparativeIndex.minimumReferenceCohortSize)} communes` : "indisponible"}
       </span>
+      {point.comparativeIndex.estimatedComponentCount > 0 ? (
+        <span title={describeComparativeIndex(point.comparativeIndex)}>
+          Les estimations sont des moyennes départementales SSMSI des communes masquées.
+        </span>
+      ) : null}
     </>
   );
 }
@@ -134,27 +149,32 @@ export default function NearbyCitiesMap({ origin, year, points, criterion }: Nea
           </div>
         </Popup>
       </CircleMarker>
-      {points.map((point) => (
-        <CircleMarker
-          key={point.inseeCode}
-          center={[point.latitude, point.longitude]}
-          radius={6}
-          pathOptions={{
-            color: "#ffffff",
-            fillColor: getNearbyMapPointColor(point, criterion),
-            fillOpacity: 0.9,
-            weight: 1
-          }}
-        >
-          <Popup>
-            <div className="nearby-map-popup">
-              <a href={`/communes/${point.inseeCode}?year=${year}`}>{point.name}</a>
-              <span>{formatDistance(point.distanceKm)} · {formatPopulation(point.population)} habitants</span>
-              <MapMetric point={point} criterion={criterion} />
-            </div>
-          </Popup>
-        </CircleMarker>
-      ))}
+      {points.map((point) => {
+        const visualStyle = getNearbyMapPointVisualStyle(point, criterion);
+        return (
+          <CircleMarker
+            key={point.inseeCode}
+            center={[point.latitude, point.longitude]}
+            radius={6}
+            pathOptions={{
+              color: "#ffffff",
+              fillColor: visualStyle?.fillColor ?? getNearbyMapPointColor(point, criterion),
+              fillOpacity: visualStyle?.fillOpacity ?? 0.9,
+              opacity: visualStyle?.borderOpacity ?? 1,
+              dashArray: visualStyle?.dashArray ?? undefined,
+              weight: visualStyle?.borderWeight ?? 1
+            }}
+          >
+            <Popup>
+              <div className="nearby-map-popup">
+                <a href={`/communes/${point.inseeCode}?year=${year}`}>{point.name}</a>
+                <span>{formatDistance(point.distanceKm)} · {formatPopulation(point.population)} habitants</span>
+                <MapMetric point={point} criterion={criterion} />
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
     </MapContainer>
   );
 }

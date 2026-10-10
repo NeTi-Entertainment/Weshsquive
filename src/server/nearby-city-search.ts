@@ -327,11 +327,14 @@ nearby_metrics as (
         else 'insufficient-coverage'
       end
     ) as comparative_index_status,
-    metrics.comparative_index_confidence,
     metrics.availability_mask,
-    coalesce(metrics.basket_version, 'residential-risk-v1') as basket_version,
+    coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
+    metrics.basket_version,
     coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
-    coalesce(metrics.cohort_size, 0) as cohort_size,
+    coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
+    coalesce(metrics.comparable_basket_category_count, 0) as comparable_basket_category_count,
+    coalesce(metrics.minimum_reference_cohort_size, 0) as minimum_reference_cohort_size,
+    coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
     metrics.population_band,
     selected_category.selected_category_label,
     selected_category.selected_category_incident_count,
@@ -384,9 +387,17 @@ map_points as (
     'distanceKm', distance_km,
     'population', population,
     'populationYear', population_year,
-    'comparativeIndex', comparative_index,
-    'comparativeIndexStatus', comparative_index_status,
-    'comparativeIndexCompleteness', comparative_index_confidence,
+    'comparative_index', comparative_index,
+    'comparative_index_status', comparative_index_status,
+    'basket_version', basket_version,
+    'published_basket_category_count', published_basket_category_count,
+    'estimated_basket_category_count', estimated_basket_category_count,
+    'comparable_basket_category_count', comparable_basket_category_count,
+    'availability_mask', availability_mask,
+    'estimated_availability_mask', estimated_availability_mask,
+    'minimum_reference_cohort_size', minimum_reference_cohort_size,
+    'comparative_index_provenance', comparative_index_provenance,
+    'population_band', population_band,
     'categoryLabel', map_category_label,
     'categoryRatePer1000', map_category_rate_per_1000,
     'categoryPercentile', map_category_percentile,
@@ -429,6 +440,9 @@ type Queryable = {
   ): Promise<QueryResult<T>>;
 };
 
+type RawNearbyMapPoint = Omit<NearbyMapPoint, "comparativeIndex" | "environmentalRisk"> &
+  ComparativeIndexColumns;
+
 type RawNearbyCityRow = {
   origin_exists: boolean;
   snapshot_id: string | null;
@@ -443,12 +457,6 @@ type RawNearbyCityRow = {
   distance_km: string;
   population: number | null;
   population_year: number | null;
-  comparative_index_status: ComparativeIndexColumns["comparative_index_status"];
-  comparative_index_confidence: ComparativeIndexColumns["comparative_index_confidence"];
-  basket_version: string;
-  published_basket_category_count: number;
-  cohort_size: number;
-  population_band: string | null;
   selected_category_label: string | null;
   selected_category_incident_count: number | null;
   selected_category_rate_per_1000: string | null;
@@ -460,7 +468,7 @@ type RawNearbyCityRow = {
   selected_category_housing_denominator: string | null;
   selected_category_housing_denominator_year: number | null;
   total_count: number;
-  map_points: NearbyMapPoint[] | null;
+  map_points: RawNearbyMapPoint[] | null;
 } & ComparativeIndexColumns & PublishedMetricsColumns;
 
 type RawMapEnvironmentalRiskRow = {
@@ -469,6 +477,7 @@ type RawMapEnvironmentalRiskRow = {
   neighbor_insee_code: string | null;
   distance_km: string | null;
   comparative_index: string | number | null;
+  comparative_index_provenance: ComparativeIndex["provenance"];
 };
 
 export async function searchNearbyCities(
@@ -482,7 +491,9 @@ export async function searchNearbyCities(
   }
 
   const rows = result.rows.filter((row) => row.insee_code !== null);
-  const mapPoints = result.rows.find((row) => row.map_points !== null)?.map_points ?? [];
+  const mapPoints = (
+    result.rows.find((row) => row.map_points !== null)?.map_points ?? []
+  ).map(mapNearbyMapPoint);
   const environmentalRiskByCode = new Map<string, EnvironmentalRiskSummary>();
 
   if (params.environmentalRadiusKm !== undefined && mapPoints.length > 0) {
@@ -520,7 +531,8 @@ export async function searchNearbyCities(
           neighborInseeCode: row.neighbor_insee_code,
           distanceKm: Number(row.distance_km),
           comparativeIndex:
-            row.comparative_index === null ? null : Number(row.comparative_index)
+            row.comparative_index === null ? null : Number(row.comparative_index),
+          comparativeIndexProvenance: row.comparative_index_provenance
         });
       }
 
@@ -583,5 +595,26 @@ export async function searchNearbyCities(
             }
           : null
     }))
+  };
+}
+
+function mapNearbyMapPoint(row: RawNearbyMapPoint): NearbyMapPoint {
+  return {
+    inseeCode: row.inseeCode,
+    name: row.name,
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+    distanceKm: row.distanceKm,
+    population: row.population,
+    populationYear: row.populationYear,
+    comparativeIndex: mapComparativeIndex(row, row.population),
+    categoryLabel: row.categoryLabel,
+    categoryRatePer1000: row.categoryRatePer1000,
+    categoryPercentile: row.categoryPercentile,
+    categoryCountUnit: row.categoryCountUnit,
+    categoryRateDenominator: row.categoryRateDenominator,
+    categoryPopulationDenominatorYear: row.categoryPopulationDenominatorYear,
+    categoryHousingDenominatorYear: row.categoryHousingDenominatorYear,
+    categoryPublicationStatus: row.categoryPublicationStatus
   };
 }
