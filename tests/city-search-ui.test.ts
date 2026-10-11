@@ -174,6 +174,7 @@ describe("collectCategoryColumns", () => {
       { code: "cambriolages", label: "Cambriolages", available: true, estimated: false, historical: false }
         ]
       },
+      multipleHighExposureAlert: null,
       categories: [
         {
           code: "violences",
@@ -240,6 +241,7 @@ describe("collectCategoryColumns", () => {
         basketCategoryCount: 4,
         basketAvailability: []
       },
+      multipleHighExposureAlert: null,
       categories: [
         {
           code: "cambriolages",

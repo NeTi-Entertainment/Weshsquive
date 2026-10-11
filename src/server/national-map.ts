@@ -30,6 +30,11 @@ import type {
   PropertyMarketPropertyType,
   PropertyMarketSelection
 } from "@/shared/property-market";
+import {
+  getMultipleHighExposureAlert,
+  type ExposureAlertComponentInput,
+  type MultipleHighExposureAlert
+} from "@/shared/exposure-alert";
 
 export { getNationalMapLevel } from "@/shared/map-levels";
 
@@ -84,6 +89,7 @@ export type NationalMapPoint = {
   populationYear: number | null;
   published: ReturnType<typeof mapPublishedMetrics>;
   comparativeIndex: ComparativeIndex;
+  multipleHighExposureAlert: MultipleHighExposureAlert | null;
   categoryLabel: string | null;
   categoryIncidentCount: number | null;
   categoryRatePer1000: string | null;
@@ -479,7 +485,8 @@ select
   case when map_anchor.category_code is not null then 'absolute-exposure'
        when map_category.category_code is not null then 'percentile'
        else null end as category_color_mode,
-  ${PROPERTY_MARKET_SELECT_COLUMNS}
+  ${PROPERTY_MARKET_SELECT_COLUMNS},
+  exposure_alert_components.components as exposure_alert_components
 from cities c
 join departments d on d.code = c.department_code
 join regions r on r.code = c.region_code
@@ -491,6 +498,22 @@ left join search_metrics_city_year_comparative metrics
 ${mapCategoryJoin}
 left join exposure_index_category_anchors map_anchor
   on map_anchor.category_code = map_category.category_code
+left join lateral (
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'code', category.category_code,
+    'label', category.category_label,
+    'exposureScore', category.category_exposure_score,
+    'exposureSourceYear', category.category_exposure_source_year,
+    'exposureProvenance', category.category_exposure_source
+  ) order by category.category_label), '[]'::jsonb) as components
+  from search_metrics_city_year_category category
+  join exposure_index_category_anchors basket
+    on basket.category_code = category.category_code
+  where category.snapshot_id = active_snapshot.snapshot_id
+    and category.city_insee_code = c.insee_code
+    and category.year = ${yearPlaceholder}
+    and category.category_exposure_score is not null
+) exposure_alert_components on true
 ${propertyMarketJoin}
 where ${[...visibleFilters, ...cityFilters].join("\n  and ")}
 order by c.name, c.insee_code
@@ -548,6 +571,7 @@ type RawNationalMapPoint = {
   category_percentile: string | null;
   category_exposure_score: string | null;
   category_color_mode: "absolute-exposure" | "percentile" | null;
+  exposure_alert_components: ExposureAlertComponentInput[] | null;
 } & ComparativeIndexColumns & PublishedMetricsColumns & RawPropertyMarketColumns;
 
 type RawMapEnvironmentalRiskRow = {
@@ -609,6 +633,7 @@ export async function searchNationalMap(
       populationYear: row.population_year,
       published: mapPublishedMetrics(row),
       comparativeIndex: comparative,
+      multipleHighExposureAlert: getMultipleHighExposureAlert(row.exposure_alert_components ?? []),
       categoryLabel: row.category_label,
       categoryIncidentCount: row.incident_count,
       categoryRatePer1000: row.rate_per_1000,

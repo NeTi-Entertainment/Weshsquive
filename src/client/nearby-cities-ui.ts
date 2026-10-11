@@ -1,5 +1,6 @@
 import type { NearbyMapCriterion } from "@/client/nearby-map-ui";
 import type { ComparativeIndex } from "@/server/comparative-index";
+import type { MultipleHighExposureAlert } from "@/shared/exposure-alert";
 import {
   ENVIRONMENTAL_RADII_KM,
   type EnvironmentalRadiusKm
@@ -40,6 +41,7 @@ export type NearbyCityResult = {
     coverageRatio: string | number | null;
   };
   comparativeIndex: ComparativeIndex;
+  multipleHighExposureAlert: MultipleHighExposureAlert | null;
   selectedCategory: {
     code: string;
     label: string;

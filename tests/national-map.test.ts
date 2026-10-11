@@ -172,6 +172,10 @@ describe("national map parameters", () => {
     expect(query.text).toContain("exposure_index_category_anchors");
     expect(query.text).not.toContain("minimum_reference_cohort_size");
     expect(query.text).toContain("metrics.comparative_index_provenance");
+    expect(query.text).toContain("exposure_alert_components.components as exposure_alert_components");
+    expect(query.text).toContain("category.category_exposure_source_year");
+    expect(query.text).toContain("category.category_exposure_source");
+    expect(query.text).toContain("basket.category_code = category.category_code");
     expect(query.text).toContain("metrics.basket_version");
     expect(query.text).not.toContain("coalesce(metrics.basket_version");
     expect(query.text).not.toContain("complement_info_nombre");
@@ -221,6 +225,22 @@ describe("national map parameters", () => {
     const db = {
       query: vi.fn().mockResolvedValue({
         rows: [rawCityRow({
+          exposure_alert_components: [
+            {
+              code: "ssmsi-78384436563146dc6167ea53b7b5e0cd",
+              label: "Cambriolages de logement",
+              exposureScore: 77.2,
+              exposureSourceYear: 2025,
+              exposureProvenance: "current-published"
+            },
+            {
+              code: "ssmsi-74a195792dd119f60822e61df3587522",
+              label: "Vols de véhicule",
+              exposureScore: 68,
+              exposureSourceYear: 2024,
+              exposureProvenance: "historical-published"
+            }
+          ],
           property_market_year_available: true,
           property_market_year: 2025,
           property_market_kind: "rent",
@@ -261,6 +281,9 @@ describe("national map parameters", () => {
       basketCategoryCount: 6,
       basketAvailability: partiallyEstimatedBasketAvailability
     });
+    expect(result.communes[0].comparativeIndex.value).toBe(54);
+    expect(result.communes[0].multipleHighExposureAlert?.components.map(({ score, sourceYear }) => [score, sourceYear]))
+      .toEqual([[77.2, 2025], [68, 2024]]);
     expect(result.communes[0].propertyMarket).toEqual({
         kind: "rent",
         propertyType: "apartment",

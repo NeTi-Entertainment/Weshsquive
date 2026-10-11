@@ -32,7 +32,9 @@ import {
   getComparativeIndexClassName
 } from "@/client/city-search-ui";
 import { isExposureIndexCategory } from "@/shared/exposure-index";
+import { EXPOSURE_ALERT_LABEL } from "@/shared/exposure-alert";
 import { LatestRequest } from "@/client/latest-request";
+import { ExposureAlertBadge } from "./exposure-alert";
 
 type NearbyCitiesPanelProps = {
   originInseeCode: string;
@@ -413,6 +415,10 @@ export default function NearbyCitiesPanel({
               })}
             </div>
           ) : null}
+          <span className="exposure-alert-map-legend">
+            <i aria-hidden="true" />
+            {EXPOSURE_ALERT_LABEL}
+          </span>
         </div>
         <p className="nearby-map-method">
           {mapCriterion.type === "environmentalRisk"
@@ -465,12 +471,18 @@ export default function NearbyCitiesPanel({
             {results.map((result) => (
               <tr key={result.inseeCode}>
                 <td>
-                  <Link
-                    className="city-link"
-                    href={`/communes/${result.inseeCode}?year=${year}${submittedForm.categoryCode ? `&categoryCode=${encodeURIComponent(submittedForm.categoryCode)}` : ""}`}
-                  >
-                    {result.name}
-                  </Link>
+                  <div className="city-row-heading">
+                    <Link
+                      className="city-link"
+                      href={`/communes/${result.inseeCode}?year=${year}${submittedForm.categoryCode ? `&categoryCode=${encodeURIComponent(submittedForm.categoryCode)}` : ""}`}
+                    >
+                      {result.name}
+                    </Link>
+                    <ExposureAlertBadge
+                      alert={result.multipleHighExposureAlert}
+                      targetYear={year}
+                    />
+                  </div>
                   <span>{result.inseeCode}</span>
                 </td>
                 <td>{formatDistance(result.distanceKm)}</td>

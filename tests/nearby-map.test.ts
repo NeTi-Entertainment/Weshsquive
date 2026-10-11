@@ -34,6 +34,7 @@ const point: NearbyMapPoint = {
     basketCategoryCount: 6,
     basketAvailability: []
   },
+  multipleHighExposureAlert: null,
   categoryLabel: "Cambriolages de logement",
   categoryRatePer1000: 8.2,
   categoryPercentile: 0.84,

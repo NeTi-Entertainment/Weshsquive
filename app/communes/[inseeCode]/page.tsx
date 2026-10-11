@@ -25,6 +25,7 @@ import { pool } from "@/server/db";
 
 import EnvironmentalRiskSection from "../../environmental-risk-section";
 import NearbyCitiesPanel from "../../nearby-cities-panel";
+import { ExposureAlertDetails } from "../../exposure-alert";
 
 type CityDetailPageProps = {
   params: Promise<{ inseeCode: string }>;
@@ -153,6 +154,11 @@ export default async function CityDetailPage({ params, searchParams }: CityDetai
           <small>Échelle fixe fondée sur les taux par catégorie; ce n’est pas une statistique officielle.</small>
         </article>
       </section>
+
+      <ExposureAlertDetails
+        alert={city.multipleHighExposureAlert}
+        targetYear={city.year}
+      />
 
       <EnvironmentalRiskSection summaries={city.environmentalRisk} />
 

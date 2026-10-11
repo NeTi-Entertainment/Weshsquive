@@ -8,6 +8,7 @@ import type {
   ComparativeIndexProvenance
 } from "@/server/comparative-index";
 import { getExposureRiskBand } from "@/shared/exposure-index";
+import type { MultipleHighExposureAlert } from "@/shared/exposure-alert";
 
 export type NearbyMapCriterion =
   | { type: "comparativeIndex" }
@@ -27,6 +28,7 @@ export type NearbyMapPoint = {
   population: number | null;
   populationYear: number | null;
   comparativeIndex: ComparativeIndex;
+  multipleHighExposureAlert: MultipleHighExposureAlert | null;
   categoryLabel: string | null;
   categoryRatePer1000: string | number | null;
   categoryPercentile: string | number | null;

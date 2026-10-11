@@ -18,6 +18,7 @@ import {
   type EnvironmentalRiskSummary
 } from "@/server/environmental-risk";
 import type { ExposureComponentSource } from "@/shared/exposure-index";
+import { getMultipleHighExposureAlert, type MultipleHighExposureAlert } from "@/shared/exposure-alert";
 
 type RateDenominator = "population" | "housing" | "unknown";
 type PublicationStatus = "published" | "masked" | "unknown";
@@ -46,6 +47,7 @@ export type CityDetail = {
   regionCode: string; regionName: string; latitude: number | null; longitude: number | null;
   population: number | null; populationYear: number | null; year: number;
   published: PublishedMetrics; comparativeIndex: ComparativeIndex;
+  multipleHighExposureAlert: MultipleHighExposureAlert | null;
   categories: CategoryMetrics[];
   comparisons: Array<{
     code: string; label: string; countUnit: string | null;
@@ -374,6 +376,7 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
     longitude: row.longitude === null ? null : Number(row.longitude),
     population: row.population, populationYear: row.population_year, year: params.year,
     published: mapPublishedMetrics(row), comparativeIndex: mapComparativeIndex(row),
+    multipleHighExposureAlert: getMultipleHighExposureAlert(row.categories),
     categories: row.categories, comparisons: Array.from(comparisonsMap.values()),
     historyByCategory, selectedHistoryCategoryCode, environmentalRisk
   };

@@ -5,6 +5,7 @@ import {
   parseCitySearchParams,
   searchCities
 } from "../src/server/city-search";
+import { getComparativeIndexClassName } from "../src/client/city-search-ui";
 
 describe("parseCitySearchParams", () => {
   it("parses supported filters and applies safe paging defaults", () => {
@@ -113,7 +114,24 @@ describe("buildCitySearchQuery", () => {
           estimated_availability_mask: 60,
           oldest_exposure_source_year: 2024,
           comparative_index_provenance: "partially-estimated",
-          categories: [category]
+          categories: [
+            category,
+            {
+              ...category,
+              code: "ssmsi-78384436563146dc6167ea53b7b5e0cd",
+              label: "Cambriolages de logement",
+              exposureSourceYear: 2025,
+              exposureScore: 77.2,
+              exposureProvenance: "current-published"
+            },
+            {
+              ...category,
+              code: "ssmsi-74a195792dd119f60822e61df3587522",
+              label: "Vols de véhicule",
+              exposureSourceYear: 2024,
+              exposureScore: 68
+            }
+          ]
         }],
         rowCount: 1
       })
@@ -133,6 +151,11 @@ describe("buildCitySearchQuery", () => {
       oldestSourceYear: 2024,
       lowVolumeCapApplied: false
     });
+    expect(result.comparativeIndex.value).toBe(68);
+    expect(getComparativeIndexClassName(result.comparativeIndex.value))
+      .toBe("stat-cell stat-band-very-high");
+    expect(result.multipleHighExposureAlert?.components.map(({ score, sourceYear }) => [score, sourceYear]))
+      .toEqual([[77.2, 2025], [68, 2024]]);
     expect(result.categories[0]).toMatchObject({
       publicationStatus: "masked",
       incidentCount: null,

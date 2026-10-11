@@ -10,6 +10,7 @@ import {
   type PublishedMetricsColumns
 } from "@/server/comparative-index";
 import type { ExposureComponentSource } from "@/shared/exposure-index";
+import { getMultipleHighExposureAlert, type MultipleHighExposureAlert } from "@/shared/exposure-alert";
 
 export type CitySearchParams = {
   year: number;
@@ -50,6 +51,7 @@ export type CitySearchRow = {
   populationYear: number | null;
   published: PublishedMetrics;
   comparativeIndex: ComparativeIndex;
+  multipleHighExposureAlert: MultipleHighExposureAlert | null;
   categories: Array<{
     code: string;
     label: string;
@@ -381,6 +383,7 @@ export async function searchCities(
     populationYear: row.population_year,
     published: mapPublishedMetrics(row),
     comparativeIndex: mapComparativeIndex(row),
+    multipleHighExposureAlert: getMultipleHighExposureAlert(row.categories),
     categories: row.categories
   }));
 }

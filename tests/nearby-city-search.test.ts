@@ -78,6 +78,22 @@ describe("nearby city search", () => {
       estimated_availability_mask: 48,
       oldest_exposure_source_year: 2025,
       comparative_index_provenance: "partially-estimated",
+      exposureComponents: [
+        {
+          code: "ssmsi-78384436563146dc6167ea53b7b5e0cd",
+          label: "Cambriolages de logement",
+          exposureScore: 77.2,
+          exposureSourceYear: 2025,
+          exposureProvenance: "current-published"
+        },
+        {
+          code: "ssmsi-74a195792dd119f60822e61df3587522",
+          label: "Vols de véhicule",
+          exposureScore: 68,
+          exposureSourceYear: 2024,
+          exposureProvenance: "historical-published"
+        }
+      ],
       categoryLabel: null,
       categoryRatePer1000: null,
       categoryPercentile: null,
@@ -104,6 +120,8 @@ describe("nearby city search", () => {
     expect(query.text).toContain("filtered_count as (");
     expect(query.text).toContain("map_points as (");
     expect(query.text).toContain("jsonb_agg(");
+    expect(query.text).toContain("exposure_alert_data.components as exposure_components");
+    expect(query.text).toContain("'exposureComponents', exposure_components");
     expect(query.text).toContain("left join paged_nearby on true");
     await expect(searchNearbyCities(db as never, params)).resolves.toEqual({
       totalCount: 237,
@@ -130,6 +148,25 @@ describe("nearby city search", () => {
           lowVolumeCapApplied: false,
           basketCategoryCount: 6,
           basketAvailability: partiallyEstimatedBasketAvailability
+        },
+        multipleHighExposureAlert: {
+          label: "Plusieurs catégories présentent une exposition élevée malgré un indice global modéré.",
+          components: [
+            {
+              code: "ssmsi-78384436563146dc6167ea53b7b5e0cd",
+              label: "Cambriolages de logement",
+              score: 77.2,
+              sourceYear: 2025,
+              provenance: "current-published"
+            },
+            {
+              code: "ssmsi-74a195792dd119f60822e61df3587522",
+              label: "Vols de véhicule",
+              score: 68,
+              sourceYear: 2024,
+              provenance: "historical-published"
+            }
+          ]
         },
         categoryLabel: null,
         categoryRatePer1000: null,

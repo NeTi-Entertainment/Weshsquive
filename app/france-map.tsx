@@ -35,6 +35,7 @@ import {
   propertyTypeLabel
 } from "@/client/property-market-ui";
 import { isExposureIndexCategory } from "@/shared/exposure-index";
+import { EXPOSURE_ALERT_LABEL } from "@/shared/exposure-alert";
 import {
   buildNationalMapUrl,
   formatNationalMapResultCount,
@@ -48,6 +49,7 @@ import {
 import type { CitySearchFormState } from "@/client/city-search-ui";
 import type { NationalMapCommune, NationalMapGroup, NationalMapPoint, NationalMapResult } from "@/server/national-map";
 import type { RentPropertyType, SalePropertyType } from "@/shared/property-market";
+import { ExposureAlertDetails } from "./exposure-alert";
 
 type FranceMapProps = {
   form: CitySearchFormState;
@@ -227,6 +229,10 @@ export default function FranceMap({
             {propertyLayerActive ? (
               <span>Couleur : percentile national des communes publiables pour la même année et le même type de logement.</span>
             ) : null}
+            <span className="exposure-alert-map-legend">
+              <i aria-hidden="true" />
+              {EXPOSURE_ALERT_LABEL}
+            </span>
             {criterion.type === "comparativeIndex" ? (
               <div className="comparative-provenance-legend" aria-label="Provenance de l’indice d’exposition">
                 {comparativeIndexProvenanceLegend.map((provenance) => {
@@ -535,12 +541,12 @@ function CommunePolygons({
         key={commune.inseeCode}
         positions={multiPolygonToLeafletPositions(commune.geometry)}
         pathOptions={{
-          color: "#ffffff",
+          color: commune.multipleHighExposureAlert ? "#172033" : "#ffffff",
           fillColor: visualStyle?.fillColor ?? getNationalMapFeatureColor({ type: "commune", point: commune }, criterion),
           fillOpacity: visualStyle?.fillOpacity ?? 0.92,
           opacity: visualStyle?.borderOpacity ?? 1,
-          dashArray: visualStyle?.dashArray ?? undefined,
-          weight: visualStyle?.borderWeight ?? 1
+          dashArray: commune.multipleHighExposureAlert ? "2 2" : visualStyle?.dashArray ?? undefined,
+          weight: commune.multipleHighExposureAlert ? 2.5 : visualStyle?.borderWeight ?? 1
         }}
       >
         <Popup>
@@ -549,6 +555,7 @@ function CommunePolygons({
             <span>{commune.departmentName} · {commune.regionName}</span>
             <span>Population : {formatPopulation(commune.population)}{commune.populationYear ? ` · Insee ${commune.populationYear}` : ""}</span>
             <PointMetric point={commune} criterion={criterion} year={year} />
+            <ExposureAlertDetails alert={commune.multipleHighExposureAlert} targetYear={year} />
           </div>
         </Popup>
       </Polygon>

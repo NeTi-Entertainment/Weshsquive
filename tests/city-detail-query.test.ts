@@ -122,6 +122,38 @@ describe("city detail queries", () => {
                 exposureProvenance: "historical-published",
                 exposureRatePer1000: 2.5,
                 exposureScore: 18.874
+              }, {
+                code: "ssmsi-78384436563146dc6167ea53b7b5e0cd",
+                label: "Cambriolages de logement",
+                incidentCount: 8,
+                ratePer1000: "16.0",
+                countUnit: "Infraction",
+                rateDenominator: "housing",
+                populationDenominator: 1044,
+                populationDenominatorYear: 2023,
+                housingDenominator: 500,
+                housingDenominatorYear: 2023,
+                publicationStatus: "published",
+                exposureSourceYear: 2025,
+                exposureProvenance: "current-published",
+                exposureRatePer1000: 12.35,
+                exposureScore: 77.2
+              }, {
+                code: "ssmsi-74a195792dd119f60822e61df3587522",
+                label: "Vols de véhicule",
+                incidentCount: 5,
+                ratePer1000: "3.5",
+                countUnit: "Véhicule",
+                rateDenominator: "population",
+                populationDenominator: 1044,
+                populationDenominatorYear: 2023,
+                housingDenominator: null,
+                housingDenominatorYear: null,
+                publicationStatus: "published",
+                exposureSourceYear: 2024,
+                exposureProvenance: "historical-published",
+                exposureRatePer1000: 3.5,
+                exposureScore: 68
               }]
             }],
             rowCount: 1
@@ -195,5 +227,7 @@ describe("city detail queries", () => {
     });
     expect(detail?.categories[0]).not.toHaveProperty("complementInfoNombre");
     expect(detail?.categories[0]).not.toHaveProperty("complementInfoTaux");
+    expect(detail?.multipleHighExposureAlert?.components.map(({ score, sourceYear }) => [score, sourceYear]))
+      .toEqual([[77.2, 2025], [68, 2024]]);
   });
 });

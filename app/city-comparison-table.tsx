@@ -15,6 +15,7 @@ import {
   getComparativeIndexClassName,
   type CitySearchResult
 } from "@/client/city-search-ui";
+import { ExposureAlertBadge } from "./exposure-alert";
 
 type CityComparisonTableProps = {
   cities: CitySearchResult[];
@@ -55,12 +56,18 @@ export default function CityComparisonTable({
               {cities.map((city) => (
                 <th scope="col" key={city.inseeCode}>
                   <div className="comparison-city-header">
-                    <Link
-                      className="city-link"
-                      href={`/communes/${city.inseeCode}?year=${year}${categoryCode ? `&categoryCode=${encodeURIComponent(categoryCode)}` : ""}`}
-                    >
-                      {city.name}
-                    </Link>
+                    <div className="comparison-city-name">
+                      <Link
+                        className="city-link"
+                        href={`/communes/${city.inseeCode}?year=${year}${categoryCode ? `&categoryCode=${encodeURIComponent(categoryCode)}` : ""}`}
+                      >
+                        {city.name}
+                      </Link>
+                      <ExposureAlertBadge
+                        alert={city.multipleHighExposureAlert}
+                        targetYear={Number(year)}
+                      />
+                    </div>
                     <span>{city.inseeCode} · {city.departmentName}</span>
                     <button
                       type="button"

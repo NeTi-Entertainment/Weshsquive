@@ -31,6 +31,7 @@ import {
 import { LatestRequest } from "@/client/latest-request";
 import type { NationalMapCriterion } from "@/client/france-map-ui";
 import CityComparisonTable from "./city-comparison-table";
+import { ExposureAlertBadge } from "./exposure-alert";
 
 const FranceMap = dynamic(() => import("./france-map"), {
   ssr: false,
@@ -565,6 +566,10 @@ export default function CitySearchPage() {
                     >
                       {result.name}
                     </Link>
+                    <ExposureAlertBadge
+                      alert={result.multipleHighExposureAlert}
+                      targetYear={Number(submittedForm.year)}
+                    />
                   </div>
                   <span>{result.inseeCode}</span>
                 </td>

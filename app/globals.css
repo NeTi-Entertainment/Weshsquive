@@ -500,6 +500,59 @@ tbody tr:hover {
   gap: 8px;
 }
 
+.exposure-alert-badge {
+  display: inline-grid;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid #9a3412;
+  border-radius: 50%;
+  background: #fff1c2;
+  color: #7c2d12;
+  font-size: 13px;
+  line-height: 1;
+  cursor: help;
+}
+
+.exposure-alert-details {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid #c2410c;
+  background: #fff7df;
+  color: #48230c;
+  font-size: 12px;
+}
+
+.exposure-alert-details strong {
+  display: block;
+  line-height: 1.4;
+}
+
+.exposure-alert-details ul {
+  display: grid;
+  gap: 3px;
+  margin: 5px 0 0;
+  padding-left: 18px;
+}
+
+.exposure-alert-map-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #3f2a1d;
+  font-size: 12px;
+}
+
+.exposure-alert-map-legend i {
+  display: inline-block;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 12px;
+  border: 2px dashed #172033;
+  background: transparent;
+}
+
 .compare-checkbox {
   width: 16px;
   height: 16px;
@@ -634,6 +687,12 @@ tbody tr:hover {
 
 .comparison-city-header .city-link {
   color: #ffffff;
+}
+
+.comparison-city-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .comparison-city-header span {

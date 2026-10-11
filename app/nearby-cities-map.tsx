@@ -27,6 +27,7 @@ import {
   type NearbyMapPoint
 } from "@/client/nearby-map-ui";
 import { formatDistance } from "@/client/nearby-cities-ui";
+import { ExposureAlertDetails } from "./exposure-alert";
 
 type NearbyCitiesMapProps = {
   origin: {
@@ -154,12 +155,12 @@ export default function NearbyCitiesMap({ origin, year, points, criterion }: Nea
             center={[point.latitude, point.longitude]}
             radius={6}
             pathOptions={{
-              color: "#ffffff",
+              color: point.multipleHighExposureAlert ? "#172033" : "#ffffff",
               fillColor: visualStyle?.fillColor ?? getNearbyMapPointColor(point, criterion),
               fillOpacity: visualStyle?.fillOpacity ?? 0.9,
               opacity: visualStyle?.borderOpacity ?? 1,
-              dashArray: visualStyle?.dashArray ?? undefined,
-              weight: visualStyle?.borderWeight ?? 1
+              dashArray: point.multipleHighExposureAlert ? "2 2" : visualStyle?.dashArray ?? undefined,
+              weight: point.multipleHighExposureAlert ? 2.5 : visualStyle?.borderWeight ?? 1
             }}
           >
             <Popup>
@@ -167,6 +168,7 @@ export default function NearbyCitiesMap({ origin, year, points, criterion }: Nea
                 <a href={`/communes/${point.inseeCode}?year=${year}`}>{point.name}</a>
                 <span>{formatDistance(point.distanceKm)} · {formatPopulation(point.population)} habitants</span>
                 <MapMetric point={point} criterion={criterion} year={year} />
+                <ExposureAlertDetails alert={point.multipleHighExposureAlert} targetYear={year} />
               </div>
             </Popup>
           </CircleMarker>

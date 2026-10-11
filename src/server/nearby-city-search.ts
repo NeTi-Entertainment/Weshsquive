@@ -2,6 +2,11 @@ import type { QueryResult, QueryResultRow } from "pg";
 import { z } from "zod";
 
 import type { NearbyMapPoint } from "@/client/nearby-map-ui";
+import {
+  getMultipleHighExposureAlert,
+  type ExposureAlertComponentInput,
+  type MultipleHighExposureAlert
+} from "@/shared/exposure-alert";
 
 import {
   mapComparativeIndex,
@@ -53,6 +58,7 @@ export type NearbyCitySearchRow = {
   populationYear: number | null;
   published: PublishedMetrics;
   comparativeIndex: ComparativeIndex;
+  multipleHighExposureAlert: MultipleHighExposureAlert | null;
   selectedCategory: {
     code: string;
     label: string;
@@ -358,7 +364,8 @@ nearby_metrics as (
     map_category.category_exposure_score as map_category_exposure_score,
     case when map_anchor.category_code is not null then 'absolute-exposure'
          when map_category.category_code is not null then 'percentile'
-         else null end as map_category_color_mode
+         else null end as map_category_color_mode,
+    exposure_alert_data.components as exposure_components
   from origin_city
   cross join active_snapshot
   join cities c
@@ -373,6 +380,22 @@ nearby_metrics as (
    and metrics.year = $2
   ${selectedCategoryJoin}
   ${mapCategoryJoin}
+  left join lateral (
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'code', category.category_code,
+      'label', category.category_label,
+      'exposureScore', category.category_exposure_score,
+      'exposureSourceYear', category.category_exposure_source_year,
+      'exposureProvenance', category.category_exposure_source
+    ) order by category.category_label), '[]'::jsonb) as components
+    from search_metrics_city_year_category category
+    join exposure_index_category_anchors basket
+      on basket.category_code = category.category_code
+    where category.snapshot_id = active_snapshot.snapshot_id
+      and category.city_insee_code = c.insee_code
+      and category.year = $2
+      and category.category_exposure_score is not null
+  ) exposure_alert_data on true
 ),
 filtered_nearby as (
   select nm.*
@@ -415,7 +438,8 @@ map_points as (
     'categoryRateDenominator', map_category_rate_denominator,
     'categoryPopulationDenominatorYear', map_category_population_denominator_year,
     'categoryHousingDenominatorYear', map_category_housing_denominator_year,
-    'categoryPublicationStatus', map_category_publication_status
+    'categoryPublicationStatus', map_category_publication_status,
+    'exposureComponents', exposure_components
   ) order by distance_km, name, insee_code), '[]'::jsonb) as points
   from filtered_nearby
 ),
@@ -450,8 +474,8 @@ type Queryable = {
   ): Promise<QueryResult<T>>;
 };
 
-type RawNearbyMapPoint = Omit<NearbyMapPoint, "comparativeIndex" | "environmentalRisk"> &
-  ComparativeIndexColumns;
+type RawNearbyMapPoint = Omit<NearbyMapPoint, "comparativeIndex" | "environmentalRisk" | "multipleHighExposureAlert"> &
+  ComparativeIndexColumns & { exposureComponents: ExposureAlertComponentInput[] };
 
 type RawNearbyCityRow = {
   origin_exists: boolean;
@@ -479,6 +503,7 @@ type RawNearbyCityRow = {
   selected_category_housing_denominator_year: number | null;
   total_count: number;
   map_points: RawNearbyMapPoint[] | null;
+  exposure_components: ExposureAlertComponentInput[] | null;
 } & ComparativeIndexColumns & PublishedMetricsColumns;
 
 type RawMapEnvironmentalRiskRow = {
@@ -584,6 +609,7 @@ export async function searchNearbyCities(
       populationYear: row.population_year,
       published: mapPublishedMetrics(row),
       comparativeIndex: mapComparativeIndex(row),
+      multipleHighExposureAlert: getMultipleHighExposureAlert(row.exposure_components ?? []),
       selectedCategory:
         params.categoryCode && row.selected_category_label && row.selected_category_publication_status
           ? {
@@ -620,6 +646,7 @@ function mapNearbyMapPoint(row: RawNearbyMapPoint): NearbyMapPoint {
     population: row.population,
     populationYear: row.populationYear,
     comparativeIndex: mapComparativeIndex(row),
+    multipleHighExposureAlert: getMultipleHighExposureAlert(row.exposureComponents ?? []),
     categoryLabel: row.categoryLabel,
     categoryRatePer1000: row.categoryRatePer1000,
     categoryPercentile: row.categoryPercentile,

@@ -5,6 +5,7 @@ import {
   type ComparativeIndexStatus
 } from "@/server/comparative-index";
 import { getExposureRiskBand } from "@/shared/exposure-index";
+import type { MultipleHighExposureAlert } from "@/shared/exposure-alert";
 
 export { comparativeIndexProvenanceLabel, exposureComponentSourceLabel };
 
@@ -71,6 +72,7 @@ export type CitySearchResult = {
     coverageRatio: string | number | null;
   };
   comparativeIndex: ComparativeIndex;
+  multipleHighExposureAlert: MultipleHighExposureAlert | null;
   categories: CitySearchCategory[];
 };
 
