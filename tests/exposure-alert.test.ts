@@ -8,9 +8,39 @@ import { EXPOSURE_INDEX_ANCHORS } from "../src/shared/exposure-index";
 
 describe("multiple high exposure alert", () => {
   const [firstCategory, secondCategory, thirdCategory] = EXPOSURE_INDEX_ANCHORS;
+  const twoHighComponents = [
+    {
+      code: firstCategory.code,
+      label: firstCategory.label,
+      exposureScore: 85,
+      exposureSourceYear: 2024,
+      exposureProvenance: "historical-published" as const
+    },
+    {
+      code: secondCategory.code,
+      label: secondCategory.label,
+      exposureScore: 65,
+      exposureSourceYear: 2025,
+      exposureProvenance: "current-published" as const
+    }
+  ];
+
+  it.each([
+    [34.1, true],
+    [35, true],
+    [35.1, false]
+  ])("only flags two high components at or below an index of 35 (%s)", (globalScore, shouldFlag) => {
+    const alert = getMultipleHighExposureAlert(globalScore, twoHighComponents);
+
+    expect(alert !== null).toBe(shouldFlag);
+  });
+
+  it("does not flag one high component when the global index is moderate", () => {
+    expect(getMultipleHighExposureAlert(35, [twoHighComponents[0]])).toBeNull();
+  });
 
   it("flags two usable high components and retains their source details", () => {
-    expect(getMultipleHighExposureAlert([
+    expect(getMultipleHighExposureAlert(34.1, [
       {
         code: firstCategory.code,
         label: firstCategory.label,
@@ -47,7 +77,7 @@ describe("multiple high exposure alert", () => {
   });
 
   it("does not flag a single high component", () => {
-    expect(getMultipleHighExposureAlert([{
+    expect(getMultipleHighExposureAlert(20, [{
       code: firstCategory.code,
       label: firstCategory.label,
       exposureScore: 99,
@@ -57,7 +87,7 @@ describe("multiple high exposure alert", () => {
   });
 
   it("ignores scores below 65, unavailable scores, and categories outside the basket", () => {
-    expect(getMultipleHighExposureAlert([
+    expect(getMultipleHighExposureAlert(20, [
       {
         code: firstCategory.code,
         label: firstCategory.label,
@@ -108,7 +138,7 @@ describe("multiple high exposure alert", () => {
     ];
     const original = structuredClone(components);
 
-    getMultipleHighExposureAlert(components);
+    getMultipleHighExposureAlert(20, components);
 
     expect(components).toEqual(original);
   });

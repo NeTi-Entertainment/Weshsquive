@@ -154,8 +154,7 @@ describe("buildCitySearchQuery", () => {
     expect(result.comparativeIndex.value).toBe(68);
     expect(getComparativeIndexClassName(result.comparativeIndex.value))
       .toBe("stat-cell stat-band-very-high");
-    expect(result.multipleHighExposureAlert?.components.map(({ score, sourceYear }) => [score, sourceYear]))
-      .toEqual([[77.2, 2025], [68, 2024]]);
+    expect(result.multipleHighExposureAlert).toBeNull();
     expect(result.categories[0]).toMatchObject({
       publicationStatus: "masked",
       incidentCount: null,

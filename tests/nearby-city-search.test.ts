@@ -149,25 +149,7 @@ describe("nearby city search", () => {
           basketCategoryCount: 6,
           basketAvailability: partiallyEstimatedBasketAvailability
         },
-        multipleHighExposureAlert: {
-          label: "Plusieurs catégories présentent une exposition élevée malgré un indice global modéré.",
-          components: [
-            {
-              code: "ssmsi-78384436563146dc6167ea53b7b5e0cd",
-              label: "Cambriolages de logement",
-              score: 77.2,
-              sourceYear: 2025,
-              provenance: "current-published"
-            },
-            {
-              code: "ssmsi-74a195792dd119f60822e61df3587522",
-              label: "Vols de véhicule",
-              score: 68,
-              sourceYear: 2024,
-              provenance: "historical-published"
-            }
-          ]
-        },
+        multipleHighExposureAlert: null,
         categoryLabel: null,
         categoryRatePer1000: null,
         categoryPercentile: null,

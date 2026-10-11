@@ -2,6 +2,7 @@ import { EXPOSURE_INDEX_ANCHORS, type ExposureComponentSource } from "@/shared/e
 
 export const EXPOSURE_ALERT_COMPONENT_THRESHOLD = 65;
 export const EXPOSURE_ALERT_MINIMUM_COMPONENTS = 2;
+export const EXPOSURE_ALERT_MAX_GLOBAL_SCORE = 35;
 export const EXPOSURE_ALERT_LABEL =
   "Plusieurs catégories présentent une exposition élevée malgré un indice global modéré.";
 
@@ -31,8 +32,17 @@ const basketCategoryCodes: ReadonlySet<string> = new Set(
 );
 
 export function getMultipleHighExposureAlert(
+  globalScore: number | null,
   components: readonly ExposureAlertComponentInput[]
 ): MultipleHighExposureAlert | null {
+  if (
+    globalScore === null ||
+    !Number.isFinite(globalScore) ||
+    globalScore > EXPOSURE_ALERT_MAX_GLOBAL_SCORE
+  ) {
+    return null;
+  }
+
   const elevated = components.flatMap((component): ExposureAlertComponent[] => {
     const score = component.exposureScore === null ? null : Number(component.exposureScore);
     if (

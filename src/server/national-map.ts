@@ -633,7 +633,10 @@ export async function searchNationalMap(
       populationYear: row.population_year,
       published: mapPublishedMetrics(row),
       comparativeIndex: comparative,
-      multipleHighExposureAlert: getMultipleHighExposureAlert(row.exposure_alert_components ?? []),
+      multipleHighExposureAlert: getMultipleHighExposureAlert(
+        comparative.value,
+        row.exposure_alert_components ?? []
+      ),
       categoryLabel: row.category_label,
       categoryIncidentCount: row.incident_count,
       categoryRatePer1000: row.rate_per_1000,

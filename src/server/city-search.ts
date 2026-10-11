@@ -370,20 +370,23 @@ export async function searchCities(
   const query = buildCitySearchQuery(params);
   const result = await db.query<RawCitySearchRow>(query.text, query.values);
 
-  return result.rows.map((row) => ({
-    inseeCode: row.insee_code,
-    name: row.name,
-    departmentCode: row.department_code,
-    departmentName: row.department_name,
-    regionCode: row.region_code,
-    regionName: row.region_name,
-    latitude: row.latitude === null ? null : Number(row.latitude),
-    longitude: row.longitude === null ? null : Number(row.longitude),
-    population: row.population,
-    populationYear: row.population_year,
-    published: mapPublishedMetrics(row),
-    comparativeIndex: mapComparativeIndex(row),
-    multipleHighExposureAlert: getMultipleHighExposureAlert(row.categories),
-    categories: row.categories
-  }));
+  return result.rows.map((row) => {
+    const comparativeIndex = mapComparativeIndex(row);
+    return {
+      inseeCode: row.insee_code,
+      name: row.name,
+      departmentCode: row.department_code,
+      departmentName: row.department_name,
+      regionCode: row.region_code,
+      regionName: row.region_name,
+      latitude: row.latitude === null ? null : Number(row.latitude),
+      longitude: row.longitude === null ? null : Number(row.longitude),
+      population: row.population,
+      populationYear: row.population_year,
+      published: mapPublishedMetrics(row),
+      comparativeIndex,
+      multipleHighExposureAlert: getMultipleHighExposureAlert(comparativeIndex.value, row.categories),
+      categories: row.categories
+    };
+  });
 }

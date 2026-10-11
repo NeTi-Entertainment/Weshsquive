@@ -227,7 +227,6 @@ describe("city detail queries", () => {
     });
     expect(detail?.categories[0]).not.toHaveProperty("complementInfoNombre");
     expect(detail?.categories[0]).not.toHaveProperty("complementInfoTaux");
-    expect(detail?.multipleHighExposureAlert?.components.map(({ score, sourceYear }) => [score, sourceYear]))
-      .toEqual([[77.2, 2025], [68, 2024]]);
+    expect(detail?.multipleHighExposureAlert).toBeNull();
   });
 });

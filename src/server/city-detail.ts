@@ -367,6 +367,7 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
       environmentalNeighbors.get(radiusKm) ?? []
     )
   );
+  const comparativeIndex = mapComparativeIndex(row);
 
   return {
     inseeCode: row.insee_code, name: row.name,
@@ -375,8 +376,8 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
     latitude: row.latitude === null ? null : Number(row.latitude),
     longitude: row.longitude === null ? null : Number(row.longitude),
     population: row.population, populationYear: row.population_year, year: params.year,
-    published: mapPublishedMetrics(row), comparativeIndex: mapComparativeIndex(row),
-    multipleHighExposureAlert: getMultipleHighExposureAlert(row.categories),
+    published: mapPublishedMetrics(row), comparativeIndex,
+    multipleHighExposureAlert: getMultipleHighExposureAlert(comparativeIndex.value, row.categories),
     categories: row.categories, comparisons: Array.from(comparisonsMap.values()),
     historyByCategory, selectedHistoryCategoryCode, environmentalRisk
   };

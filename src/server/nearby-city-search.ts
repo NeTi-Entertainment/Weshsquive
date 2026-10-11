@@ -595,48 +595,55 @@ export async function searchNearbyCities(
   return {
     totalCount: result.rows.length === 0 ? 0 : result.rows[0].total_count,
     mapPoints: enrichedMapPoints,
-    results: rows.map((row) => ({
-      inseeCode: row.insee_code as string,
-      name: row.name,
-      departmentCode: row.department_code,
-      departmentName: row.department_name,
-      regionCode: row.region_code,
-      regionName: row.region_name,
-      latitude: Number(row.latitude),
-      longitude: Number(row.longitude),
-      distanceKm: row.distance_km,
-      population: row.population,
-      populationYear: row.population_year,
-      published: mapPublishedMetrics(row),
-      comparativeIndex: mapComparativeIndex(row),
-      multipleHighExposureAlert: getMultipleHighExposureAlert(row.exposure_components ?? []),
-      selectedCategory:
-        params.categoryCode && row.selected_category_label && row.selected_category_publication_status
-          ? {
-              code: params.categoryCode,
-              label: row.selected_category_label,
-              incidentCount: row.selected_category_incident_count,
-              ratePer1000: row.selected_category_rate_per_1000,
-              countUnit: row.selected_category_count_unit,
-              rateDenominator: row.selected_category_rate_denominator,
-              populationDenominator:
-                row.selected_category_population_denominator === null
-                  ? null
-                  : Number(row.selected_category_population_denominator),
-              populationDenominatorYear: row.selected_category_population_denominator_year,
-              housingDenominator:
-                row.selected_category_housing_denominator === null
-                  ? null
-                  : Number(row.selected_category_housing_denominator),
-              housingDenominatorYear: row.selected_category_housing_denominator_year,
-              publicationStatus: row.selected_category_publication_status
-            }
-          : null
-    }))
+    results: rows.map((row) => {
+      const comparativeIndex = mapComparativeIndex(row);
+      return {
+        inseeCode: row.insee_code as string,
+        name: row.name,
+        departmentCode: row.department_code,
+        departmentName: row.department_name,
+        regionCode: row.region_code,
+        regionName: row.region_name,
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        distanceKm: row.distance_km,
+        population: row.population,
+        populationYear: row.population_year,
+        published: mapPublishedMetrics(row),
+        comparativeIndex,
+        multipleHighExposureAlert: getMultipleHighExposureAlert(
+          comparativeIndex.value,
+          row.exposure_components ?? []
+        ),
+        selectedCategory:
+          params.categoryCode && row.selected_category_label && row.selected_category_publication_status
+            ? {
+                code: params.categoryCode,
+                label: row.selected_category_label,
+                incidentCount: row.selected_category_incident_count,
+                ratePer1000: row.selected_category_rate_per_1000,
+                countUnit: row.selected_category_count_unit,
+                rateDenominator: row.selected_category_rate_denominator,
+                populationDenominator:
+                  row.selected_category_population_denominator === null
+                    ? null
+                    : Number(row.selected_category_population_denominator),
+                populationDenominatorYear: row.selected_category_population_denominator_year,
+                housingDenominator:
+                  row.selected_category_housing_denominator === null
+                    ? null
+                    : Number(row.selected_category_housing_denominator),
+                housingDenominatorYear: row.selected_category_housing_denominator_year,
+                publicationStatus: row.selected_category_publication_status
+              }
+            : null
+      };
+    })
   };
 }
 
 function mapNearbyMapPoint(row: RawNearbyMapPoint): NearbyMapPoint {
+  const comparativeIndex = mapComparativeIndex(row);
   return {
     inseeCode: row.inseeCode,
     name: row.name,
@@ -645,8 +652,11 @@ function mapNearbyMapPoint(row: RawNearbyMapPoint): NearbyMapPoint {
     distanceKm: row.distanceKm,
     population: row.population,
     populationYear: row.populationYear,
-    comparativeIndex: mapComparativeIndex(row),
-    multipleHighExposureAlert: getMultipleHighExposureAlert(row.exposureComponents ?? []),
+    comparativeIndex,
+    multipleHighExposureAlert: getMultipleHighExposureAlert(
+      comparativeIndex.value,
+      row.exposureComponents ?? []
+    ),
     categoryLabel: row.categoryLabel,
     categoryRatePer1000: row.categoryRatePer1000,
     categoryPercentile: row.categoryPercentile,

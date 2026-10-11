@@ -282,8 +282,7 @@ describe("national map parameters", () => {
       basketAvailability: partiallyEstimatedBasketAvailability
     });
     expect(result.communes[0].comparativeIndex.value).toBe(54);
-    expect(result.communes[0].multipleHighExposureAlert?.components.map(({ score, sourceYear }) => [score, sourceYear]))
-      .toEqual([[77.2, 2025], [68, 2024]]);
+    expect(result.communes[0].multipleHighExposureAlert).toBeNull();
     expect(result.communes[0].propertyMarket).toEqual({
         kind: "rent",
         propertyType: "apartment",
