@@ -27,9 +27,13 @@ export function formatEnvironmentalRiskProvenance(
 ): string {
   switch (provenance) {
     case "published-only":
-      return "Basé sur des indices publiés";
+      return "Basé sur les indices communaux publiés pour l’année cible";
+    case "historical-published":
+      return "Basé sur des indices communaux complétés par l’historique";
     case "partially-estimated":
-      return "Contient des indices estimés";
+      return "Contient des indices départementaux estimés";
+    case "estimated-only":
+      return "Basé uniquement sur des moyennes départementales";
     case "unavailable":
       return "Indice indisponible";
   }

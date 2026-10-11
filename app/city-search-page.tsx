@@ -8,6 +8,7 @@ import {
   buildCitySearchUrl,
   collectCategoryColumns,
   comparativeIndexProvenanceLabel,
+  exposureComponentSourceLabel,
   comparativeIndexComponentCountLabel,
   defaultSearchForm,
   describeComparativeIndex,
@@ -591,7 +592,7 @@ export default function CitySearchPage() {
                   aria-label={`Indice ${formatComparativeIndex(result.comparativeIndex.value)}. ${describeComparativeIndex(result.comparativeIndex)} ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
                 >
                   <strong>{formatComparativeIndex(result.comparativeIndex.value)}</strong>
-                  <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance)}</span>
+                  <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance, Number(submittedForm.year))}</span>
                   <span>{comparativeIndexComponentCountLabel(result.comparativeIndex)}</span>
                   <span>
                     {result.comparativeIndex.lowVolumeCapApplied ? "Plafond faible volume appliqué" : "Échelle fixe calibrée sur les taux 2025"}
@@ -603,6 +604,13 @@ export default function CitySearchPage() {
                     <td
                       key={category.code}
                       className={value?.publicationStatus === "masked" ? "muted-cell" : ""}
+                      title={value
+                        ? exposureComponentSourceLabel(
+                            value.exposureProvenance,
+                            value.exposureSourceYear,
+                            Number(submittedForm.year)
+                          ) ?? undefined
+                        : undefined}
                     >
                       {value ? (
                         <>

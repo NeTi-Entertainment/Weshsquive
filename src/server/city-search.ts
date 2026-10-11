@@ -9,6 +9,7 @@ import {
   type PublishedMetrics,
   type PublishedMetricsColumns
 } from "@/server/comparative-index";
+import type { ExposureComponentSource } from "@/shared/exposure-index";
 
 export type CitySearchParams = {
   year: number;
@@ -61,6 +62,10 @@ export type CitySearchRow = {
     housingDenominator: number | null;
     housingDenominatorYear: number | null;
     publicationStatus: "published" | "masked" | "unknown";
+    exposureSourceYear: number | null;
+    exposureProvenance: ExposureComponentSource | null;
+    exposureRatePer1000: number | null;
+    exposureScore: number | null;
   }>;
 };
 
@@ -242,11 +247,14 @@ city_metrics as (
     coalesce(metrics.total_category_count, 0) as total_category_count,
     metrics.coverage_ratio,
     coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
+    coalesce(metrics.historical_published_basket_category_count, 0) as historical_published_basket_category_count,
     coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
     coalesce(metrics.effective_basket_category_count, 0) as effective_basket_category_count,
     metrics.basket_index_coverage,
     coalesce(metrics.low_volume_cap_applied, false) as low_volume_cap_applied,
     coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
+    coalesce(metrics.historical_availability_mask, 0) as historical_availability_mask,
+    metrics.oldest_exposure_source_year,
     coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
     metrics.comparative_index,
     metrics.availability_mask,
@@ -282,7 +290,11 @@ left join lateral (
         'populationDenominatorYear', rc.insee_pop_millesime,
         'housingDenominator', rc.insee_log,
         'housingDenominatorYear', rc.insee_log_millesime,
-        'publicationStatus', rc.publication_status
+        'publicationStatus', rc.publication_status,
+        'exposureSourceYear', rc.category_exposure_source_year,
+        'exposureProvenance', rc.category_exposure_source,
+        'exposureRatePer1000', rc.category_exposure_rate_per_1000,
+        'exposureScore', rc.category_exposure_score
       )
       order by rc.category_label
     ) as categories

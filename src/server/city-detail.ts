@@ -17,6 +17,7 @@ import {
   type EnvironmentalRadiusKm,
   type EnvironmentalRiskSummary
 } from "@/server/environmental-risk";
+import type { ExposureComponentSource } from "@/shared/exposure-index";
 
 type RateDenominator = "population" | "housing" | "unknown";
 type PublicationStatus = "published" | "masked" | "unknown";
@@ -26,8 +27,13 @@ type CategoryMetrics = {
   populationDenominator: number | null; populationDenominatorYear: number | null;
   housingDenominator: number | null; housingDenominatorYear: number | null;
   publicationStatus: PublicationStatus;
+  exposureSourceYear: number | null; exposureProvenance: ExposureComponentSource | null;
+  exposureRatePer1000: number | null; exposureScore: number | null;
 };
-type HistoryObservation = Omit<CategoryMetrics, "code" | "label"> & { year: number };
+type HistoryObservation = Omit<
+  CategoryMetrics,
+  "code" | "label" | "exposureSourceYear" | "exposureProvenance" | "exposureRatePer1000" | "exposureScore"
+> & { year: number };
 type ComparisonScope = {
   scope: "commune" | "department" | "region" | "france";
   ratePer1000: string | null; publishedCityCount: number; totalCityCount: number;
@@ -95,10 +101,13 @@ select tc.*,
   coalesce(tm.comparative_index_status, 'unavailable') as comparative_index_status,
   tm.availability_mask,
   coalesce(tm.estimated_availability_mask, 0) as estimated_availability_mask,
+  coalesce(tm.historical_availability_mask, 0) as historical_availability_mask,
   tm.basket_version,
   coalesce(tm.published_basket_category_count, 0) as published_basket_category_count,
+  coalesce(tm.historical_published_basket_category_count, 0) as historical_published_basket_category_count,
   coalesce(tm.estimated_basket_category_count, 0) as estimated_basket_category_count,
   coalesce(tm.effective_basket_category_count, 0) as effective_basket_category_count,
+  tm.oldest_exposure_source_year,
   tm.basket_index_coverage,
   coalesce(tm.low_volume_cap_applied, false) as low_volume_cap_applied,
   coalesce(tm.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
@@ -114,7 +123,11 @@ left join lateral (
     'populationDenominatorYear', category.insee_pop_millesime,
     'housingDenominator', category.insee_log,
     'housingDenominatorYear', category.insee_log_millesime,
-    'publicationStatus', category.publication_status
+    'publicationStatus', category.publication_status,
+    'exposureSourceYear', category.category_exposure_source_year,
+    'exposureProvenance', category.category_exposure_source,
+    'exposureRatePer1000', category.category_exposure_rate_per_1000,
+    'exposureScore', category.category_exposure_score
   ) order by category.category_label) as categories
   from search_metrics_city_year_category category
   where category.snapshot_id = tc.snapshot_id
@@ -264,7 +277,8 @@ type RawEnvironmentalRiskRow = {
   target_coordinates_available: boolean;
   neighbor_insee_code: string | null;
   distance_km: number | null;
-  comparative_index: number | null;
+  comparative_index: string | number | null;
+  oldest_exposure_source_year: number | null;
   comparative_index_provenance: ComparativeIndex["provenance"];
 };
 
@@ -336,8 +350,9 @@ export async function getCityDetail(db: Queryable, params: CityDetailParams): Pr
       targetInseeCode: params.inseeCode,
       neighborInseeCode: item.neighbor_insee_code,
       distanceKm: Number(item.distance_km),
-      comparativeIndex: item.comparative_index,
-      comparativeIndexProvenance: item.comparative_index_provenance
+      comparativeIndex: item.comparative_index === null ? null : Number(item.comparative_index),
+      comparativeIndexProvenance: item.comparative_index_provenance,
+      oldestSourceYear: item.oldest_exposure_source_year
     });
   }
   const coordinatesAvailable = environmentalResult.rows[0]?.target_coordinates_available ??

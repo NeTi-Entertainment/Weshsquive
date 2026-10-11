@@ -5,6 +5,7 @@ param(
     [string]$DatabasePassword = $env:POSTGRES_PASSWORD,
     [string]$CrimeFileUrl = "https://static.data.gouv.fr/resources/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/20260709-115942/donnee-data.gouv-2025-geographie2026-produit-le2026-06-25.csv.gz",
     [int]$Year,
+    [int[]]$Years,
     [int]$GeographyYear,
     [string]$Source = "ssmsi-base-communale",
     [string]$SourceLastModified = "",
@@ -12,6 +13,33 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+$yearWasSpecified = $PSBoundParameters.ContainsKey("Year")
+$yearsWereSpecified = $PSBoundParameters.ContainsKey("Years")
+if ($yearWasSpecified -and $yearsWereSpecified) {
+    throw "Specify either -Year or -Years, not both."
+}
+
+$selectedYears = if ($yearWasSpecified) {
+    @([int]$Year)
+}
+elseif ($yearsWereSpecified) {
+    @($Years)
+}
+else {
+    @()
+}
+
+if ($yearsWereSpecified -and $selectedYears.Count -eq 0) {
+    throw "-Years must contain at least one year."
+}
+if ($selectedYears | Where-Object { $_ -lt 2000 -or $_ -gt 2100 }) {
+    throw "SSMSI import years must be between 2000 and 2100."
+}
+if ($selectedYears.Count -ne @($selectedYears | Sort-Object -Unique).Count) {
+    throw "SSMSI import years must be unique."
+}
+$selectedYears = @($selectedYears | Sort-Object)
 
 if ([string]::IsNullOrWhiteSpace($DatabaseName)) {
     $DatabaseName = "app_criminalite"
@@ -195,43 +223,52 @@ try {
 
     $sourceLiteral = ConvertTo-SqlLiteral -Value $Source
     $sourceUrlLiteral = ConvertTo-SqlLiteral -Value $CrimeFileUrl
-    $sourceYearLiteral = if ($PSBoundParameters.ContainsKey("Year")) { $Year.ToString() } else { "null" }
-    $yearFilter = if ($PSBoundParameters.ContainsKey("Year")) { "where raw.annee::integer = $Year" } else { "" }
-    $yearValidation = if ($PSBoundParameters.ContainsKey("Year")) {
+    $selectedYearArray = if ($selectedYears.Count -gt 0) {
+        "ARRAY[$($selectedYears -join ',')]::integer[]"
+    }
+    else {
+        "null::integer[]"
+    }
+    $selectedYearPredicate = if ($selectedYears.Count -gt 0) {
+        "(case when raw.annee ~ '^[0-9]{4}$' then raw.annee::integer end = any($selectedYearArray))"
+    }
+    else {
+        "true"
+    }
+    $yearFilter = if ($selectedYears.Count -gt 0) {
+        "where $selectedYearPredicate"
+    }
+    else {
+        ""
+    }
+    $yearValidation = if ($selectedYears.Count -gt 0) {
 @"
 do `$annual_guard`$
 declare
     expected_city_count integer;
     loaded_city_count integer;
     category_count integer;
+    requested_year integer;
 begin
     select count(*) into expected_city_count from cities;
-    select count(distinct cities.insee_code), count(distinct raw.indicateur)
-    into loaded_city_count, category_count
-    from ssmsi_raw raw
-    join cities on cities.insee_code = raw.codgeo_2026
-    where raw.annee ~ '^[0-9]{4}$'
-        and raw.annee::integer = $Year
-        and raw.indicateur is not null;
+    foreach requested_year in array $selectedYearArray loop
+        select count(distinct cities.insee_code), count(distinct raw.indicateur)
+        into loaded_city_count, category_count
+        from ssmsi_raw raw
+        join cities on cities.insee_code = raw.codgeo
+        where case when raw.annee ~ '^[0-9]{4}$' then raw.annee::integer end = requested_year
+            and raw.indicateur is not null;
 
-    if loaded_city_count = 0 then
-        raise exception 'SSMSI source contains no known communes for requested year $Year';
-    end if;
-    if expected_city_count >= 1000 and (
-        loaded_city_count < ceil(expected_city_count * 0.90)
-        or category_count < 10
-    ) then
-        raise exception 'SSMSI source appears incomplete for year ${Year}: % communes and % categories', loaded_city_count, category_count;
-    end if;
-
-    if not exists (
-        select 1
-        from ssmsi_raw
-        where annee ~ '^[0-9]{4}$'
-            and annee::integer = $Year
-    ) then
-        raise exception 'SSMSI source contains no rows for requested year $Year';
-    end if;
+        if loaded_city_count = 0 then
+            raise exception 'SSMSI source contains no known communes for requested year %', requested_year;
+        end if;
+        if expected_city_count >= 1000 and (
+            loaded_city_count < ceil(expected_city_count * 0.90)
+            or category_count < 10
+        ) then
+            raise exception 'SSMSI source appears incomplete for year %: % communes and % categories', requested_year, loaded_city_count, category_count;
+        end if;
+    end loop;
 end
 `$annual_guard`$;
 "@
@@ -239,19 +276,31 @@ end
     else {
         ""
     }
-    $yearReplacement = if ($PSBoundParameters.ContainsKey("Year")) {
-        "delete from crime_stats where source = $sourceLiteral and year = $Year;"
+    $yearReplacement = if ($selectedYears.Count -gt 0) {
+        "delete from crime_stats where source = $sourceLiteral and year = any($selectedYearArray);"
     }
     else {
         ""
     }
     $metadataLiteral = ConvertTo-SqlLiteral -Value (@{
         crimeFileUrl = $CrimeFileUrl
-        filteredYear = if ($PSBoundParameters.ContainsKey("Year")) { $Year } else { $null }
+        filteredYears = if ($selectedYears.Count -gt 0) { $selectedYears } else { $null }
         catalogLastModified = $SourceLastModified
         sourceColumns = $sourceColumns
         rateDenominatorReferenceVersion = "ssmsi-rate-denominator-2026-v1"
     } | ConvertTo-Json -Compress)
+    $batchYearsSql = if ($selectedYears.Count -gt 0) {
+        "select unnest($selectedYearArray)::smallint as year"
+    }
+    else {
+        "select null::smallint as year"
+    }
+    $batchJoinPredicate = if ($selectedYears.Count -gt 0) {
+        "import_batch.source_year = rows.year"
+    }
+    else {
+        "import_batch.source_year is null"
+    }
 
     $sql = @"
 \set ON_ERROR_STOP on
@@ -259,7 +308,7 @@ end
 begin;
 
 create temp table ssmsi_raw (
-    codgeo_2026 text,
+    codgeo text,
     annee text,
     indicateur text,
     unite_de_compte text,
@@ -276,6 +325,8 @@ create temp table ssmsi_raw (
 
 \copy ssmsi_raw from '/tmp/ssmsi-crime-data.csv' with (format csv, header true, delimiter ';', quote '"', null 'NA')
 
+analyze ssmsi_raw;
+
 $yearValidation
 
 do `$complement_status_guard`$
@@ -285,29 +336,32 @@ begin
         from ssmsi_raw raw
         where (raw.complement_info_nombre is not null or raw.complement_info_taux is not null)
           and raw.est_diffuse is distinct from 'ndiff'
-          and (
-              $sourceYearLiteral is null
-              or (raw.annee ~ '^[0-9]{4}$' and raw.annee::integer = $sourceYearLiteral)
-          )
+          and $selectedYearPredicate
     ) then
         raise exception 'SSMSI complements are only valid for ndiff rows';
     end if;
 
     if exists (
+        with department_complements as (
+            select
+                city.department_code,
+                raw.annee,
+                raw.indicateur,
+                replace(nullif(raw.complement_info_nombre, 'NA'), ',', '.')::numeric as complement_number,
+                replace(nullif(raw.complement_info_taux, 'NA'), ',', '.')::numeric as complement_rate
+            from ssmsi_raw raw
+            join cities city on city.insee_code = raw.codgeo
+            where raw.est_diffuse = 'ndiff'
+              and (raw.complement_info_nombre is not null or raw.complement_info_taux is not null)
+              and $selectedYearPredicate
+        )
         select 1
-        from ssmsi_raw raw
-        join cities city on city.insee_code = raw.codgeo_2026
-        where raw.est_diffuse = 'ndiff'
-          and (raw.complement_info_nombre is not null or raw.complement_info_taux is not null)
-          and (
-              $sourceYearLiteral is null
-              or (raw.annee ~ '^[0-9]{4}$' and raw.annee::integer = $sourceYearLiteral)
-          )
-        group by city.department_code, raw.annee, raw.indicateur
-        having count(distinct (
-            replace(nullif(raw.complement_info_nombre, 'NA'), ',', '.')::numeric,
-            replace(nullif(raw.complement_info_taux, 'NA'), ',', '.')::numeric
-        )) > 1
+        from department_complements
+        group by department_code, annee, indicateur
+        having min(complement_number) is distinct from max(complement_number)
+            or (bool_or(complement_number is null) and bool_or(complement_number is not null))
+            or min(complement_rate) is distinct from max(complement_rate)
+            or (bool_or(complement_rate is null) and bool_or(complement_rate is not null))
     ) then
         raise exception 'SSMSI masked department/year/category groups may contain at most one complement pair';
     end if;
@@ -316,7 +370,7 @@ end
 
 $yearReplacement
 
-with import_batch as (
+with import_batches_for_year as (
     insert into import_batches (
         source_system,
         source_url,
@@ -325,19 +379,19 @@ with import_batch as (
         metadata,
         completed_at
     )
-    values (
+    select
         $sourceLiteral,
         $sourceUrlLiteral,
-        $sourceYearLiteral,
+        batch_year.year,
         'completed',
-        $metadataLiteral::jsonb,
+        $metadataLiteral::jsonb || jsonb_build_object('filteredYear', batch_year.year),
         now()
-    )
-    returning id
+    from ($batchYearsSql) batch_year
+    returning id, source_year
 ),
 source_rows as (
     select
-        raw.codgeo_2026 as city_insee_code,
+        raw.codgeo as city_insee_code,
         raw.annee::integer as year,
         raw.indicateur as category_label,
         'ssmsi-' || md5(raw.indicateur) as category_code,
@@ -491,10 +545,11 @@ select
     rows.complement_info_taux,
     rows.rate_denominator,
     $sourceLiteral,
-    (select id from import_batch),
+    import_batch.id,
     now()
 from classified_rows rows
 join inserted_categories categories on categories.code = rows.category_code
+join import_batches_for_year import_batch on $batchJoinPredicate
 on conflict (city_insee_code, year, category_id, source) do update
 set
     incident_count = excluded.incident_count,
@@ -545,8 +600,11 @@ commit;
         }
     }
 
-    if ($PSBoundParameters.ContainsKey("Year")) {
+    if ($yearWasSpecified) {
         Write-Host "SSMSI crime data imported for $Year from $Source."
+    }
+    elseif ($yearsWereSpecified) {
+        Write-Host "SSMSI crime data imported for years $($selectedYears -join ', ') from $Source."
     }
     else {
         Write-Host "SSMSI crime data imported from $Source."

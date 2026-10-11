@@ -23,6 +23,24 @@ pwsh -NoProfile -File scripts/update_official_data.ps1
 
 Une première exécution peut réimporter le dernier millésime déjà présent si son URL ou sa date de modification catalogue n'était pas conservée dans ses métadonnées. Les importeurs sont idempotents ; les exécutions suivantes n'écrivent rien si l'année, l'URL et la révision officielle sont inchangées.
 
+## Reprise historique SSMSI (2016-2024)
+
+Le backfill utilise la dernière base communale consolidée résolue dans le catalogue officiel data.gouv.fr. Il charge le CSV une seule fois, n'importe que les années 2016 à 2024 demandées, crée un lot par année, et remplace transactionnellement les observations de cette plage pour la source choisie. Le rattachement reste strictement fondé sur le code INSEE présent dans `cities` : aucune correspondance de fusion ou de changement de code n'est déduite. Le millésime 2025 et les années ultérieures ne sont pas dans le périmètre du script.
+
+Afficher la source et les années prévues sans importer :
+
+```powershell
+pwsh -NoProfile -File scripts/backfill_ssmsi_history.ps1 -PlanOnly
+```
+
+Importer les neuf années puis reconstruire l'instantané une seule fois :
+
+```powershell
+pwsh -NoProfile -File scripts/backfill_ssmsi_history.ps1
+```
+
+La commande est relançable : les observations sont uniques par commune, année, catégorie et source. Si une année demandée est absente ou incomplète, la transaction d'import est annulée et aucun rafraîchissement d'instantané n'est lancé. Une URL CSV locale peut être donnée avec `-CrimeFileUrl`; `-Years` permet de choisir un sous-ensemble, toujours dans la plage 2016-2024. L'import annuel futur reste géré par `scripts/update_official_data.ps1`.
+
 Si les imports bruts aboutissent mais que le rafraîchissement statistique échoue, le prochain contrôle détecte que l'instantané actif précède les derniers imports et relance uniquement ce rafraîchissement. Une erreur de copie vers Docker arrête immédiatement l'import avant l'appel à PostgreSQL.
 
 Les domaines immobiliers sont indépendants des imports SSMSI et Insee. Une indisponibilité DVF ou ANIL est journalisée, les autres domaines planifiés continuent, puis la commande termine en erreur afin que le planificateur signale clairement la mise à jour incomplète. Les importeurs immobiliers conservent la version précédente si un téléchargement, une validation ou le calcul dérivé échoue.

@@ -67,7 +67,7 @@ describe("buildCitySearchQuery", () => {
 
   it("maps the v2 index while keeping masked category complements private", async () => {
     const category = {
-      code: "ssmsi-example",
+      code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928",
       label: "Exemple masqué",
       incidentCount: null,
       ratePer1000: null,
@@ -77,7 +77,11 @@ describe("buildCitySearchQuery", () => {
       populationDenominatorYear: 2023,
       housingDenominator: null,
       housingDenominatorYear: null,
-      publicationStatus: "masked" as const
+      publicationStatus: "masked" as const,
+      exposureSourceYear: 2024,
+      exposureProvenance: "historical-published" as const,
+      exposureRatePer1000: 2.5,
+      exposureScore: 18.874
     };
     const db = {
       query: async () => ({
@@ -97,14 +101,17 @@ describe("buildCitySearchQuery", () => {
           coverage_ratio: "0",
           comparative_index: 68,
           comparative_index_status: "available",
-          basket_version: "absolute-exposure-v1",
+          basket_version: "absolute-exposure-v2",
           published_basket_category_count: 2,
+          historical_published_basket_category_count: 2,
           estimated_basket_category_count: 4,
           effective_basket_category_count: 6,
           basket_index_coverage: "1",
           low_volume_cap_applied: false,
           availability_mask: 3,
+          historical_availability_mask: 12,
           estimated_availability_mask: 60,
+          oldest_exposure_source_year: 2024,
           comparative_index_provenance: "partially-estimated",
           categories: [category]
         }],
@@ -115,16 +122,26 @@ describe("buildCitySearchQuery", () => {
     const [result] = await searchCities(db as never, { year: 2025, limit: 25, offset: 0 });
 
     expect(result.comparativeIndex).toMatchObject({
-      basketVersion: "absolute-exposure-v1",
+      basketVersion: "absolute-exposure-v2",
       status: "available",
       provenance: "partially-estimated",
       publishedComponentCount: 2,
+      historicalPublishedComponentCount: 2,
       estimatedComponentCount: 4,
       availableComponentCount: 6,
       coverageRatio: 1,
+      oldestSourceYear: 2024,
       lowVolumeCapApplied: false
     });
-    expect(result.categories[0]).toEqual(category);
+    expect(result.categories[0]).toMatchObject({
+      publicationStatus: "masked",
+      incidentCount: null,
+      ratePer1000: null,
+      exposureSourceYear: 2024,
+      exposureProvenance: "historical-published",
+      exposureRatePer1000: 2.5,
+      exposureScore: 18.874
+    });
     expect(result.categories[0]).not.toHaveProperty("complementInfoNombre");
     expect(result.categories[0]).not.toHaveProperty("complementInfoTaux");
   });
@@ -260,10 +277,16 @@ describe("buildCitySearchQuery", () => {
     expect(query.text).toContain("metrics.comparative_index");
     expect(query.text).not.toContain("metrics.comparative_index_confidence");
     expect(query.text).toContain("metrics.estimated_basket_category_count");
+    expect(query.text).toContain("metrics.historical_published_basket_category_count");
     expect(query.text).toContain("metrics.effective_basket_category_count");
     expect(query.text).toContain("metrics.basket_index_coverage");
     expect(query.text).toContain("metrics.low_volume_cap_applied");
     expect(query.text).toContain("metrics.estimated_availability_mask");
+    expect(query.text).toContain("metrics.historical_availability_mask");
+    expect(query.text).toContain("metrics.oldest_exposure_source_year");
+    expect(query.text).toContain("rc.category_exposure_source_year");
+    expect(query.text).toContain("rc.category_exposure_rate_per_1000");
+    expect(query.text).toContain("rc.category_exposure_source");
     expect(query.text).toContain("metrics.comparative_index_provenance");
     expect(query.text).toContain("metrics.basket_version");
     expect(query.text).not.toContain("coalesce(metrics.basket_version");

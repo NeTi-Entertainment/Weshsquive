@@ -31,9 +31,11 @@ describe("environmental risk UI formatters", () => {
     expect(formatEnvironmentalRiskStatus("coordinates-unavailable")).toBe("Coordonnées indisponibles");
   });
 
-  it("distinguishes published-only environmental scores from estimates", () => {
-    expect(formatEnvironmentalRiskProvenance("published-only")).toBe("Basé sur des indices publiés");
-    expect(formatEnvironmentalRiskProvenance("partially-estimated")).toBe("Contient des indices estimés");
+  it("distinguishes current, historical and departmental environmental sources", () => {
+    expect(formatEnvironmentalRiskProvenance("published-only")).toBe("Basé sur les indices communaux publiés pour l’année cible");
+    expect(formatEnvironmentalRiskProvenance("historical-published")).toBe("Basé sur des indices communaux complétés par l’historique");
+    expect(formatEnvironmentalRiskProvenance("partially-estimated")).toBe("Contient des indices départementaux estimés");
+    expect(formatEnvironmentalRiskProvenance("estimated-only")).toBe("Basé uniquement sur des moyennes départementales");
     expect(formatEnvironmentalRiskProvenance("unavailable")).toBe("Indice indisponible");
   });
 
@@ -47,8 +49,10 @@ describe("environmental risk UI formatters", () => {
         scoredNeighborCount: 4,
         totalNeighborCount: 10,
         publishedOnlyNeighborCount: 2,
+        historicalPublishedNeighborCount: 1,
         partiallyEstimatedNeighborCount: 1,
         estimatedOnlyNeighborCount: 1,
+        oldestSourceYear: 2022,
         weightedCoverageRatio: 0.52
       },
       {
@@ -59,8 +63,10 @@ describe("environmental risk UI formatters", () => {
         scoredNeighborCount: 2,
         totalNeighborCount: 5,
         publishedOnlyNeighborCount: 2,
+        historicalPublishedNeighborCount: 0,
         partiallyEstimatedNeighborCount: 0,
         estimatedOnlyNeighborCount: 0,
+        oldestSourceYear: 2025,
         weightedCoverageRatio: 0.4
       },
       {
@@ -71,8 +77,10 @@ describe("environmental risk UI formatters", () => {
         scoredNeighborCount: 0,
         totalNeighborCount: 0,
         publishedOnlyNeighborCount: 0,
+        historicalPublishedNeighborCount: 0,
         partiallyEstimatedNeighborCount: 0,
         estimatedOnlyNeighborCount: 0,
+        oldestSourceYear: null,
         weightedCoverageRatio: null
       },
       {
@@ -83,8 +91,10 @@ describe("environmental risk UI formatters", () => {
         scoredNeighborCount: 0,
         totalNeighborCount: 0,
         publishedOnlyNeighborCount: 0,
+        historicalPublishedNeighborCount: 0,
         partiallyEstimatedNeighborCount: 0,
         estimatedOnlyNeighborCount: 0,
+        oldestSourceYear: null,
         weightedCoverageRatio: null
       }
     ];
@@ -98,9 +108,10 @@ describe("environmental risk UI formatters", () => {
     expect(markup).toContain("200 km");
     expect(markup).toContain("4 / 10");
     expect(markup).toContain("52 %");
-    expect(markup).toContain("Contient des indices estimés");
-    expect(markup).toContain("Publiés : 2 · partiellement estimés : 1 · entièrement estimés : 1");
-    expect(markup).toContain("Les compléments départementaux SSMSI servent uniquement de fallback estimatif pour les catégories masquées; ils ne sont jamais affichés comme des valeurs communales.");
+    expect(markup).toContain("Contient des indices départementaux estimés");
+    expect(markup).toContain("Année source la plus ancienne : 2022");
+    expect(markup).toContain("Publiés pour l’année cible : 2 · historiques : 1 · partiellement estimés : 1 · entièrement estimés : 1");
+    expect(markup).toContain("Les dernières données communales publiées (au plus trois millésimes antérieurs) sont privilégiées avant le complément départemental SSMSI de l’année cible");
     expect(markup).toContain("Non disponible");
     const unavailableScoreRow = markup.split("<th scope=\"row\">50 km</th>")[1]?.split("</tr>")[0] ?? "";
     expect(unavailableScoreRow).toContain("environmental-risk-score");

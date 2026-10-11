@@ -125,6 +125,15 @@ CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;
 '@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-revision.csv") -Encoding utf8
 
     @'
+CODGEO_2024;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;insee_pop;insee_pop_millesime;insee_log;insee_log_millesime;complement_info_nombre;complement_info_taux
+75056;2016;Cambriolages de logement;Infraction;1;2,0000000;diff;1044;2013;500;2013;NA;NA
+75056;2017;Cambriolages de logement;Infraction;2;4,0000000;diff;1044;2014;500;2014;NA;NA
+75056;2024;Cambriolages de logement;Infraction;3;6,0000000;diff;1044;2021;500;2021;NA;NA
+75056;2025;Cambriolages de logement;Infraction;99;198,0000000;diff;1044;2023;500;2023;NA;NA
+99999;2016;Cambriolages de logement;Infraction;9;18,0000000;diff;500;2013;500;2013;NA;NA
+'@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-history.csv") -Encoding utf8
+
+    @'
 CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;insee_pop;insee_pop_millesime;insee_log;insee_log_millesime;complement_info_nombre;complement_info_taux
 75056;2025;Cambriolages de logement;Infraction;4;8,0000000;diff;1044;2023;500;2023;2,0000000;4,0000000
 '@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-invalid-published-complement.csv") -Encoding utf8
@@ -134,6 +143,12 @@ CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;
 75056;2025;Violences sexuelles;Victime;NA;NA;ndiff;1044;2023;500;2023;2,0000000;1,9000000
 75001;2025;Violences sexuelles;Victime;NA;NA;ndiff;1200;2023;600;2023;3,0000000;2,1000000
 '@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-duplicate-department-complement.csv") -Encoding utf8
+
+    @'
+CODGEO_2027;annee;indicateur;unite_de_compte;nombre;taux_pour_mille;est_diffuse;insee_pop;insee_pop_millesime;insee_log;insee_log_millesime;complement_info_nombre;complement_info_taux
+75056;2025;Violences sexuelles;Victime;NA;NA;ndiff;1044;2023;500;2023;2,0000000;NA
+75001;2025;Violences sexuelles;Victime;NA;NA;ndiff;1200;2023;600;2023;NA;1,9000000
+'@ | Set-Content -Path (Join-Path $fixtureDir "ssmsi-incomplete-department-complement.csv") -Encoding utf8
 
     docker run `
         --name $ContainerName `
@@ -209,37 +224,37 @@ select count(*) from (
 
     $comparativeSnapshotDiffCount = @"
 select count(*) from (
-    (select city_insee_code, year, population, population_year, population_band,
+    (select city_insee_code, year, population, population_year,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, estimated_basket_category_count,
-        comparable_basket_category_count, estimated_availability_mask,
-        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
-        comparative_index, comparative_index_confidence, basket_version
+        published_basket_category_count, estimated_basket_category_count,
+        effective_basket_category_count, estimated_availability_mask, basket_index_coverage,
+        comparative_index_provenance, comparative_index_status, comparative_index,
+        low_volume_cap_applied, basket_version
      from search_metrics_city_year_comparative
      where snapshot_id = (select snapshot_id from search_metrics_active where singleton)
      except all
-     select city_insee_code, year, population, population_year, population_band,
+     select city_insee_code, year, population, population_year,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, estimated_basket_category_count,
-        comparable_basket_category_count, estimated_availability_mask,
-        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
-        comparative_index, comparative_index_confidence, basket_version
+        published_basket_category_count, estimated_basket_category_count,
+        effective_basket_category_count, estimated_availability_mask, basket_index_coverage,
+        comparative_index_provenance, comparative_index_status, comparative_index,
+        low_volume_cap_applied, basket_version
      from city_year_comparative_metrics)
     union all
-    (select city_insee_code, year, population, population_year, population_band,
+    (select city_insee_code, year, population, population_year,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, estimated_basket_category_count,
-        comparable_basket_category_count, estimated_availability_mask,
-        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
-        comparative_index, comparative_index_confidence, basket_version
+        published_basket_category_count, estimated_basket_category_count,
+        effective_basket_category_count, estimated_availability_mask, basket_index_coverage,
+        comparative_index_provenance, comparative_index_status, comparative_index,
+        low_volume_cap_applied, basket_version
      from city_year_comparative_metrics
      except all
-     select city_insee_code, year, population, population_year, population_band,
+     select city_insee_code, year, population, population_year,
         published_category_count, total_category_count, coverage_ratio, availability_mask,
-        published_basket_category_count, cohort_size, estimated_basket_category_count,
-        comparable_basket_category_count, estimated_availability_mask,
-        minimum_reference_cohort_size, comparative_index_provenance, comparative_index_status,
-        comparative_index, comparative_index_confidence, basket_version
+        published_basket_category_count, estimated_basket_category_count,
+        effective_basket_category_count, estimated_availability_mask, basket_index_coverage,
+        comparative_index_provenance, comparative_index_status, comparative_index,
+        low_volume_cap_applied, basket_version
      from search_metrics_city_year_comparative
      where snapshot_id = (select snapshot_id from search_metrics_active where singleton))
 ) differences;
@@ -387,13 +402,14 @@ for each row execute function fail_search_snapshot_for_test();
 
     Assert-SqlEquals `
         -Sql "select published_basket_category_count from city_year_comparative_metrics where city_insee_code = '75056' and year = 2025;" `
-        -Expected "6" `
+        -Expected "4" `
         -Message "Unknown or non-basket categories must not increase the comparative-index basket"
 
     $batchCountBeforeInvalidComplements = (Invoke-Psql -Sql "select count(*) from import_batches where source_system = 'test-ssmsi';" -TuplesOnly).Trim()
     foreach ($invalidFixture in @(
         "ssmsi-invalid-published-complement.csv",
-        "ssmsi-duplicate-department-complement.csv"
+        "ssmsi-duplicate-department-complement.csv",
+        "ssmsi-incomplete-department-complement.csv"
     )) {
         $invalidComplementFailed = $false
         try {
@@ -513,6 +529,34 @@ for each row execute function fail_search_snapshot_for_test();
         -Sql "select count(*) from crime_stats where year = 2025;" `
         -Expected "2" `
         -Message "Revising one SSMSI year should replace only that year's official observations"
+
+    $targetYearFingerprint = (Invoke-Psql -Sql "select md5(coalesce(string_agg(to_jsonb(cs)::text, E'\\n' order by cs.id), '')) from crime_stats cs where cs.year = 2025;" -TuplesOnly).Trim()
+    & $crimeScript `
+        -ContainerName $ContainerName `
+        -DatabaseName $DatabaseName `
+        -DatabaseUser "postgres" `
+        -DatabasePassword "postgres" `
+        -CrimeFileUrl (Join-Path $fixtureDir "ssmsi-history.csv") `
+        -Years @(2016, 2017, 2024) `
+        -Source "test-ssmsi-history" `
+        -DeferMetricsRefresh
+
+    Assert-SqlEquals `
+        -Sql "select string_agg(source_year::text, ',' order by source_year) from import_batches where source_system = 'test-ssmsi-history';" `
+        -Expected "2016,2017,2024" `
+        -Message "A multi-year SSMSI import should create a distinct batch for each requested year"
+    Assert-SqlEquals `
+        -Sql "select string_agg(year::text || ':' || row_count::text, ',' order by year) from (select year, count(*) as row_count from crime_stats where source = 'test-ssmsi-history' group by year) grouped;" `
+        -Expected "2016:1,2017:1,2024:1" `
+        -Message "A multi-year SSMSI import should select only the requested years and known INSEE codes"
+    Assert-SqlEquals `
+        -Sql "select md5(coalesce(string_agg(to_jsonb(cs)::text, E'\\n' order by cs.id), '')) from crime_stats cs where cs.year = 2025;" `
+        -Expected $targetYearFingerprint `
+        -Message "A historical import must preserve every target-year raw row and timestamp"
+    Assert-SqlEquals `
+        -Sql "select count(*) from crime_stats where source = 'test-ssmsi-history' and year = 2025;" `
+        -Expected "0" `
+        -Message "Rows outside the selected historical years must not be imported"
 
     Invoke-Psql -Sql @"
 insert into cities (insee_code, name, department_code, region_code, source)

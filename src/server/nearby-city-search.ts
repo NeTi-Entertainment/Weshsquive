@@ -326,9 +326,12 @@ nearby_metrics as (
     metrics.comparative_index,
     coalesce(metrics.comparative_index_status, 'unavailable') as comparative_index_status,
     metrics.availability_mask,
+    coalesce(metrics.historical_availability_mask, 0) as historical_availability_mask,
     coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
+    metrics.oldest_exposure_source_year,
     metrics.basket_version,
     coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
+    coalesce(metrics.historical_published_basket_category_count, 0) as historical_published_basket_category_count,
     coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
     coalesce(metrics.effective_basket_category_count, 0) as effective_basket_category_count,
     metrics.basket_index_coverage,
@@ -393,12 +396,15 @@ map_points as (
     'comparative_index_status', comparative_index_status,
     'basket_version', basket_version,
     'published_basket_category_count', published_basket_category_count,
+    'historical_published_basket_category_count', historical_published_basket_category_count,
     'estimated_basket_category_count', estimated_basket_category_count,
     'effective_basket_category_count', effective_basket_category_count,
     'basket_index_coverage', basket_index_coverage,
     'low_volume_cap_applied', low_volume_cap_applied,
     'availability_mask', availability_mask,
+    'historical_availability_mask', historical_availability_mask,
     'estimated_availability_mask', estimated_availability_mask,
+    'oldest_exposure_source_year', oldest_exposure_source_year,
     'comparative_index_provenance', comparative_index_provenance,
     'categoryLabel', map_category_label,
     'categoryRatePer1000', map_category_rate_per_1000,
@@ -481,6 +487,7 @@ type RawMapEnvironmentalRiskRow = {
   neighbor_insee_code: string | null;
   distance_km: string | null;
   comparative_index: string | number | null;
+  oldest_exposure_source_year: number | null;
   comparative_index_provenance: ComparativeIndex["provenance"];
 };
 
@@ -536,7 +543,8 @@ export async function searchNearbyCities(
           distanceKm: Number(row.distance_km),
           comparativeIndex:
             row.comparative_index === null ? null : Number(row.comparative_index),
-          comparativeIndexProvenance: row.comparative_index_provenance
+          comparativeIndexProvenance: row.comparative_index_provenance,
+          oldestSourceYear: row.oldest_exposure_source_year
         });
       }
 

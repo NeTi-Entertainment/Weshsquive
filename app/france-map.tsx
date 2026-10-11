@@ -548,7 +548,7 @@ function CommunePolygons({
             <Link href={`/communes/${commune.inseeCode}?year=${year}`}>{commune.name}</Link>
             <span>{commune.departmentName} · {commune.regionName}</span>
             <span>Population : {formatPopulation(commune.population)}{commune.populationYear ? ` · Insee ${commune.populationYear}` : ""}</span>
-            <PointMetric point={commune} criterion={criterion} />
+            <PointMetric point={commune} criterion={criterion} year={year} />
           </div>
         </Popup>
       </Polygon>
@@ -556,7 +556,7 @@ function CommunePolygons({
   });
 }
 
-function PointMetric({ point, criterion }: { point: NationalMapPoint; criterion: NationalMapCriterion }) {
+function PointMetric({ point, criterion, year }: { point: NationalMapPoint; criterion: NationalMapCriterion; year: number }) {
   if (criterion.type === "salePrice" || criterion.type === "rentPrice") {
     const metric = point.propertyMarket;
     if (!metric || metric.status !== "published") {
@@ -625,7 +625,7 @@ function PointMetric({ point, criterion }: { point: NationalMapPoint; criterion:
   return (
     <>
       <strong>Indice d’exposition : {formatComparativeIndex(point.comparativeIndex.value)}</strong>
-      <span>{comparativeIndexProvenanceLabel(point.comparativeIndex.provenance)}</span>
+      <span>{comparativeIndexProvenanceLabel(point.comparativeIndex.provenance, year)}</span>
       <span>{comparativeIndexComponentCountLabel(point.comparativeIndex)}</span>
       {point.comparativeIndex.lowVolumeCapApplied ? <span>Plafond faible volume appliqué</span> : null}
       {point.comparativeIndex.estimatedComponentCount > 0 ? (

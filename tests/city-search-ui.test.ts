@@ -24,20 +24,32 @@ import {
   updateSortForColumn,
   type CitySearchResult
 } from "../src/client/city-search-ui";
+import { exposureComponentSourceLabel } from "../src/server/comparative-index";
 
 describe("comparative index provenance presentation", () => {
   it("uses the four approved French provenance labels", () => {
     expect([
       comparativeIndexProvenanceLabel("published-only"),
+      comparativeIndexProvenanceLabel("historical-published"),
       comparativeIndexProvenanceLabel("partially-estimated"),
       comparativeIndexProvenanceLabel("estimated-only"),
       comparativeIndexProvenanceLabel("unavailable")
     ]).toEqual([
       "Données communales publiées",
+      "Données communales complétées par l’historique",
       "Partiellement estimé",
       "Entièrement estimé",
-      "Indice indisponible"
+      "Indisponible"
     ]);
+  });
+
+  it("identifies the exact year and source of each exposure component", () => {
+    expect(exposureComponentSourceLabel("current-published", 2025, 2025))
+      .toBe("Donnée communale publiée en 2025");
+    expect(exposureComponentSourceLabel("historical-published", 2024, 2025))
+      .toBe("Donnée communale historique publiée en 2024");
+    expect(exposureComponentSourceLabel("department-masked-average", 2025, 2025))
+      .toBe("Estimation issue du complément départemental 2025");
   });
 
   it("qualifies the score with basket coverage and estimation provenance, not a population cohort", () => {
@@ -45,16 +57,18 @@ describe("comparative index provenance presentation", () => {
       value: 60,
       status: "available",
       provenance: "partially-estimated",
-      basketVersion: "absolute-exposure-v1",
+      basketVersion: "absolute-exposure-v2",
       publishedComponentCount: 3,
+      historicalPublishedComponentCount: 0,
       estimatedComponentCount: 3,
       availableComponentCount: 6,
       coverageRatio: 1,
+      oldestSourceYear: 2025,
       lowVolumeCapApplied: true,
       basketCategoryCount: 6,
       basketAvailability: []
     })).toBe(
-      "Partiellement estimé · Couverture du panier : 6/6 composantes exploitables (3 publiées, 3 estimées) Les valeurs estimées sont des moyennes départementales SSMSI des communes masquées, pas des statistiques communales publiées. Le score a été plafonné à 35 selon la règle de faible volume publiée."
+      "Partiellement estimé · Couverture du panier : 6/6 composantes exploitables (3 publiées pour l’année cible, 0 historiques, 3 estimées) Les valeurs estimées sont des moyennes départementales SSMSI des communes masquées, pas des statistiques communales publiées. Le score a été plafonné à 35 selon la règle de faible volume publiée."
     );
   });
 
@@ -63,15 +77,17 @@ describe("comparative index provenance presentation", () => {
       value: null,
       status: "unavailable",
       provenance: "unavailable",
-      basketVersion: "absolute-exposure-v1",
+      basketVersion: "absolute-exposure-v2",
       publishedComponentCount: 6,
+      historicalPublishedComponentCount: 0,
       estimatedComponentCount: 0,
       availableComponentCount: 0,
       coverageRatio: 0,
+      oldestSourceYear: null,
       lowVolumeCapApplied: false,
       basketCategoryCount: 6,
       basketAvailability: []
-    })).toBe("Couverture du panier : 0/6 composantes exploitables (6 publiées, 0 estimées)");
+    })).toBe("Couverture du panier : 0/6 composantes exploitables (6 publiées pour l’année cible, 0 historiques, 0 estimées)");
   });
 });
 
@@ -83,12 +99,13 @@ describe("comparativeIndexStatusLabel", () => {
 });
 
 describe("describeBasketAvailability", () => {
-  it("distinguishes published, estimated and unavailable basket components", () => {
+  it("distinguishes current, historical, estimated and unavailable components", () => {
     expect(describeBasketAvailability([
-      { code: "published", label: "Publié", available: true, estimated: false },
-      { code: "estimated", label: "Estimé", available: true, estimated: true },
-      { code: "missing", label: "Absent", available: false, estimated: false }
-    ])).toBe("Publiées : Publié. Estimées : Estimé. Indisponibles : Absent.");
+      { code: "published", label: "Publié", available: true, estimated: false, historical: false },
+      { code: "historical", label: "Historique", available: true, estimated: false, historical: true },
+      { code: "estimated", label: "Estimé", available: true, estimated: true, historical: false },
+      { code: "missing", label: "Absent", available: false, estimated: false, historical: false }
+    ])).toBe("Publiées pour l’année cible : Publié. Historiques : Historique. Estimées : Estimé. Indisponibles : Absent.");
   });
 });
 
@@ -144,15 +161,17 @@ describe("collectCategoryColumns", () => {
         value: 80,
         status: "available",
         provenance: "partially-estimated",
-        basketVersion: "absolute-exposure-v1",
+        basketVersion: "absolute-exposure-v2",
         publishedComponentCount: 3,
+        historicalPublishedComponentCount: 0,
         estimatedComponentCount: 1,
         availableComponentCount: 4,
         coverageRatio: 4 / 6,
+        oldestSourceYear: 2025,
         lowVolumeCapApplied: false,
         basketCategoryCount: 4,
         basketAvailability: [
-          { code: "cambriolages", label: "Cambriolages", available: true, estimated: false }
+      { code: "cambriolages", label: "Cambriolages", available: true, estimated: false, historical: false }
         ]
       },
       categories: [
@@ -167,7 +186,11 @@ describe("collectCategoryColumns", () => {
           populationDenominatorYear: 2023,
           housingDenominator: 500,
           housingDenominatorYear: 2023,
-          publicationStatus: "masked"
+          publicationStatus: "masked",
+          exposureSourceYear: 2024,
+          exposureProvenance: "historical-published",
+          exposureRatePer1000: 2.4,
+          exposureScore: 15
         },
         {
           code: "cambriolages",
@@ -180,7 +203,11 @@ describe("collectCategoryColumns", () => {
           populationDenominatorYear: 2023,
           housingDenominator: 500,
           housingDenominatorYear: 2023,
-          publicationStatus: "published"
+          publicationStatus: "published",
+          exposureSourceYear: 2025,
+          exposureProvenance: "current-published",
+          exposureRatePer1000: 3.83,
+          exposureScore: 23.9
         }
       ]
     },
@@ -202,11 +229,13 @@ describe("collectCategoryColumns", () => {
         value: null,
         status: "unavailable",
         provenance: "unavailable",
-        basketVersion: "absolute-exposure-v1",
+        basketVersion: "absolute-exposure-v2",
         publishedComponentCount: 0,
+        historicalPublishedComponentCount: 0,
         estimatedComponentCount: 0,
         availableComponentCount: 0,
         coverageRatio: 0,
+        oldestSourceYear: null,
         lowVolumeCapApplied: false,
         basketCategoryCount: 4,
         basketAvailability: []
@@ -223,7 +252,11 @@ describe("collectCategoryColumns", () => {
           populationDenominatorYear: 2023,
           housingDenominator: 2000,
           housingDenominatorYear: 2023,
-          publicationStatus: "published"
+          publicationStatus: "published",
+          exposureSourceYear: null,
+          exposureProvenance: null,
+          exposureRatePer1000: null,
+          exposureScore: null
         }
       ]
     }

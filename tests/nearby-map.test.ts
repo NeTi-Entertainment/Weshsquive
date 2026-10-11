@@ -23,11 +23,13 @@ const point: NearbyMapPoint = {
     value: 97,
     status: "available",
     provenance: "partially-estimated",
-    basketVersion: "absolute-exposure-v1",
+    basketVersion: "absolute-exposure-v2",
     publishedComponentCount: 1,
+    historicalPublishedComponentCount: 0,
     estimatedComponentCount: 2,
     availableComponentCount: 3,
     coverageRatio: 0.5,
+    oldestSourceYear: 2025,
     lowVolumeCapApplied: false,
     basketCategoryCount: 6,
     basketAvailability: []
@@ -52,12 +54,15 @@ describe("nearby map colors", () => {
 
   it("keeps the index hue while making score provenance visible in marker style", () => {
     const published = getComparativeIndexVisualStyle(97, "published-only");
+    const historical = getComparativeIndexVisualStyle(97, "historical-published");
     const partial = getComparativeIndexVisualStyle(97, "partially-estimated");
     const estimated = getComparativeIndexVisualStyle(97, "estimated-only");
 
     expect(partial.fillColor).toBe(published.fillColor);
+    expect(historical.fillColor).toBe(published.fillColor);
     expect(estimated.fillColor).toBe(published.fillColor);
     expect(published).toMatchObject({ fillOpacity: 0.92, borderOpacity: 0.95, dashArray: null });
+    expect(historical).toMatchObject({ fillOpacity: 0.8, borderOpacity: 0.95, dashArray: "4 3" });
     expect(partial).toMatchObject({ fillOpacity: 0.68, borderOpacity: 0.9, dashArray: "6 4" });
     expect(estimated).toMatchObject({ fillOpacity: 0.48, borderOpacity: 1, dashArray: "2 2" });
     expect(estimated.borderWeight).toBeGreaterThan(partial.borderWeight);
@@ -70,6 +75,7 @@ describe("nearby map colors", () => {
   it("provides one legend state for each supported comparative-index provenance", () => {
     expect(comparativeIndexProvenanceLegend).toEqual([
       "published-only",
+      "historical-published",
       "partially-estimated",
       "estimated-only",
       "unavailable"
@@ -95,13 +101,17 @@ describe("nearby map colors", () => {
       scoredNeighborCount: 6,
       totalNeighborCount: 8,
       publishedOnlyNeighborCount: 2,
+      historicalPublishedNeighborCount: 1,
       partiallyEstimatedNeighborCount: 3,
       estimatedOnlyNeighborCount: 1,
+      oldestSourceYear: 2022,
       weightedCoverageRatio: 0.75
     })).toEqual([
-      "Communes voisines avec indice publié : 2",
+      "Communes voisines avec indice communal de l’année cible : 2",
+      "Communes voisines avec indice complété par l’historique : 1",
       "Communes voisines avec indice partiellement estimé : 3",
-      "Communes voisines avec indice entièrement estimé : 1"
+      "Communes voisines avec indice entièrement estimé : 1",
+      "Année source la plus ancienne : 2022"
     ]);
   });
 
@@ -150,8 +160,10 @@ describe("nearby map colors", () => {
           scoredNeighborCount: 4,
           totalNeighborCount: 7,
           publishedOnlyNeighborCount: 2,
+          historicalPublishedNeighborCount: 0,
           partiallyEstimatedNeighborCount: 1,
           estimatedOnlyNeighborCount: 1,
+          oldestSourceYear: 2023,
           weightedCoverageRatio: 0.72
         }
       };
@@ -177,8 +189,10 @@ describe("nearby map colors", () => {
       scoredNeighborCount: 2,
       totalNeighborCount: 5,
       publishedOnlyNeighborCount: 1,
+      historicalPublishedNeighborCount: 0,
       partiallyEstimatedNeighborCount: 1,
       estimatedOnlyNeighborCount: 0,
+      oldestSourceYear: 2025,
       weightedCoverageRatio: 0.4
     }],
     ["mismatched radius", {
@@ -189,8 +203,10 @@ describe("nearby map colors", () => {
       scoredNeighborCount: 4,
       totalNeighborCount: 7,
       publishedOnlyNeighborCount: 2,
+      historicalPublishedNeighborCount: 0,
       partiallyEstimatedNeighborCount: 1,
       estimatedOnlyNeighborCount: 1,
+      oldestSourceYear: 2023,
       weightedCoverageRatio: 0.72
     }]
   ] as const)(

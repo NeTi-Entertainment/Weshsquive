@@ -46,8 +46,11 @@ export default function EnvironmentalRiskSection({ summaries }: EnvironmentalRis
                 <td aria-label={`${summary.scoredNeighborCount} communes avec indice sur ${summary.totalNeighborCount} communes voisines`}>
                   {summary.scoredNeighborCount} / {summary.totalNeighborCount}
                   <small className="environmental-risk-provenance-counts">
-                    Publiés : {summary.publishedOnlyNeighborCount} · partiellement estimés : {summary.partiallyEstimatedNeighborCount} · entièrement estimés : {summary.estimatedOnlyNeighborCount}
+                    Publiés pour l’année cible : {summary.publishedOnlyNeighborCount} · historiques : {summary.historicalPublishedNeighborCount} · partiellement estimés : {summary.partiallyEstimatedNeighborCount} · entièrement estimés : {summary.estimatedOnlyNeighborCount}
                   </small>
+                  {summary.oldestSourceYear !== null ? (
+                    <small>Année source la plus ancienne : {summary.oldestSourceYear}</small>
+                  ) : null}
                 </td>
                 <td>{formatEnvironmentalRiskCoverage(summary.weightedCoverageRatio)}</td>
               </tr>
@@ -58,7 +61,7 @@ export default function EnvironmentalRiskSection({ summaries }: EnvironmentalRis
       <p className="environmental-risk-note">
         Cette moyenne, calculée par l’application à partir des indices d’exposition des communes voisines et pondérée par la distance,
         décrit une exposition statistique. Ce n’est ni une statistique officielle du SSMSI, ni un percentile environnemental,
-        ni une probabilité individuelle ou une garantie de sécurité. Les compléments départementaux SSMSI servent uniquement de fallback estimatif pour les catégories masquées; ils ne sont jamais affichés comme des valeurs communales.
+        ni une probabilité individuelle ou une garantie de sécurité. Les dernières données communales publiées (au plus trois millésimes antérieurs) sont privilégiées avant le complément départemental SSMSI de l’année cible; ces compléments ne sont jamais affichés comme des valeurs communales.
       </p>
     </section>
   );

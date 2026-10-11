@@ -537,6 +537,132 @@ select md5(string_agg(
         -Expected $rawValuesBeforeExposureMigration `
         -Message "The absolute exposure migration must not modify raw official SSMSI rows"
 
+    Invoke-Psql -Sql @'
+insert into cities(insee_code, name, department_code, region_code, reference_population, population_year) values
+('T0001', 'Temporal priority', '75', '11', 1200, 2025),
+('T0002', 'Two components', '75', '11', 1200, 2025),
+('T0003', 'Three components', '75', '11', 1200, 2025),
+('T0004', 'Current-year guardrail', '75', '11', 1200, 2025);
+insert into crime_categories(code, label, source) values ('temporal-non-basket', 'Non-basket fixture', 'fixture');
+
+insert into crime_stats(
+    city_insee_code, year, category_id, incident_count, rate_per_1000,
+    publication_status, source, count_unit, insee_pop, insee_pop_millesime,
+    insee_log, insee_log_millesime, complement_info_taux, rate_denominator
+)
+select fixture.city_code, fixture.stat_year, category.id, fixture.incident_count,
+       fixture.rate_per_1000, fixture.publication_status::publication_status,
+       'temporal-fixture', fixture.count_unit, 1200, 2025, 1000, 2025,
+       fixture.complement_rate, fixture.rate_denominator
+from (values
+    ('T0001', 2025, 'ssmsi-78384436563146dc6167ea53b7b5e0cd', 4, 16.0470::numeric, 'published', 'Infraction', 'housing', null::numeric),
+    ('T0001', 2025, 'ssmsi-74a195792dd119f60822e61df3587522', 0, 0::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0001', 2024, 'ssmsi-74a195792dd119f60822e61df3587522', 40, 4::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0001', 2025, 'ssmsi-d3e9d2e40d72b8850d5283eb73bdc928', null::integer, null::numeric, 'masked', 'Véhicule', 'population', 77::numeric),
+    ('T0001', 2024, 'ssmsi-d3e9d2e40d72b8850d5283eb73bdc928', 3, 2.5::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0001', 2025, 'ssmsi-bf6b19b3e53b90f6594ec2e8303c5778', null::integer, null::numeric, 'masked', 'Infraction', 'population', 88::numeric),
+    ('T0001', 2024, 'ssmsi-bf6b19b3e53b90f6594ec2e8303c5778', 30, 30::numeric, 'published', 'Victime', 'population', null::numeric),
+    ('T0001', 2023, 'ssmsi-bf6b19b3e53b90f6594ec2e8303c5778', 2, 2::numeric, 'published', 'Infraction', 'population', null::numeric),
+    ('T0001', 2025, 'ssmsi-a2601b900aa009440624697e1d74e4a9', null::integer, null::numeric, 'masked', 'Victime', 'population', 99::numeric),
+    ('T0001', 2024, 'ssmsi-a2601b900aa009440624697e1d74e4a9', null::integer, null::numeric, 'masked', 'Victime', 'population', null::numeric),
+    ('T0001', 2023, 'ssmsi-a2601b900aa009440624697e1d74e4a9', null::integer, null::numeric, 'masked', 'Victime', 'population', null::numeric),
+    ('T0001', 2022, 'ssmsi-a2601b900aa009440624697e1d74e4a9', 2, 3::numeric, 'published', 'Victime', 'population', null::numeric),
+    ('T0001', 2021, 'ssmsi-a2601b900aa009440624697e1d74e4a9', 500, 100::numeric, 'published', 'Victime', 'population', null::numeric),
+    ('T0001', 2025, 'ssmsi-bdbeb8ca73503f8264dab16159795328', null::integer, null::numeric, 'masked', 'Mis en cause', 'population', 5.1832::numeric),
+    ('T0001', 2024, 'ssmsi-bdbeb8ca73503f8264dab16159795328', 20, 20::numeric, 'published', 'Mis en cause', 'housing', null::numeric),
+    ('T0001', 2023, 'ssmsi-bdbeb8ca73503f8264dab16159795328', 20, 20::numeric, 'published', 'Victime', 'population', null::numeric),
+    ('T0002', 2025, 'ssmsi-78384436563146dc6167ea53b7b5e0cd', 1, 1::numeric, 'published', 'Infraction', 'housing', null::numeric),
+    ('T0002', 2025, 'ssmsi-74a195792dd119f60822e61df3587522', 1, 1::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0003', 2025, 'ssmsi-78384436563146dc6167ea53b7b5e0cd', 1, 1::numeric, 'published', 'Infraction', 'housing', null::numeric),
+    ('T0003', 2025, 'ssmsi-74a195792dd119f60822e61df3587522', 1, 1::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0003', 2025, 'ssmsi-d3e9d2e40d72b8850d5283eb73bdc928', 1, 1::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0004', 2025, 'ssmsi-78384436563146dc6167ea53b7b5e0cd', null::integer, null::numeric, 'masked', 'Infraction', 'housing', 100::numeric),
+    ('T0004', 2024, 'ssmsi-78384436563146dc6167ea53b7b5e0cd', 0, 100::numeric, 'published', 'Infraction', 'housing', null::numeric),
+    ('T0004', 2025, 'ssmsi-74a195792dd119f60822e61df3587522', 20, 50::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0004', 2025, 'ssmsi-d3e9d2e40d72b8850d5283eb73bdc928', 20, 50::numeric, 'published', 'Véhicule', 'population', null::numeric),
+    ('T0004', 2025, 'ssmsi-bf6b19b3e53b90f6594ec2e8303c5778', 5, 50::numeric, 'published', 'Infraction', 'population', null::numeric),
+    ('T0004', 2025, 'ssmsi-a2601b900aa009440624697e1d74e4a9', 20, 50::numeric, 'published', 'Victime', 'population', null::numeric),
+    ('T0004', 2025, 'ssmsi-bdbeb8ca73503f8264dab16159795328', 20, 50::numeric, 'published', 'Mis en cause', 'population', null::numeric),
+    ('T0001', 2025, 'temporal-non-basket', 2, 2::numeric, 'published', 'Infraction', 'unknown', null::numeric)
+) as fixture(city_code, stat_year, category_code, incident_count, rate_per_1000,
+             publication_status, count_unit, rate_denominator, complement_rate)
+join crime_categories category on category.code = fixture.category_code;
+'@ | Out-Null
+
+    $rawValuesBeforeTemporalMigration = (Invoke-Psql -Sql @'
+select md5(string_agg(
+    jsonb_build_array(city_insee_code, year, category_id, incident_count, rate_per_1000,
+        publication_status::text, source, count_unit, insee_pop, insee_pop_millesime,
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux,
+        rate_denominator)::text,
+    E'\n' order by id
+)) from crime_stats;
+'@ -TuplesOnly).Trim()
+
+    $temporalMigration = Get-Item (Join-Path $migrationDir "009_temporal_exposure_fallback.sql")
+    docker cp $temporalMigration.FullName "${ContainerName}:/tmp/$($temporalMigration.Name)" | Out-Null
+    docker exec -e PGPASSWORD=postgres $ContainerName `
+        psql -v ON_ERROR_STOP=1 -U postgres -d $DatabaseName -f "/tmp/$($temporalMigration.Name)" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Migration failed: $($temporalMigration.Name)" }
+
+    Assert-SqlEquals `
+        -Sql "select source_year || '|' || component_source || '|' || trim(to_char(effective_rate_per_1000, 'FM999990.0000')) || '|' || trim(to_char(component_exposure_score, 'FM999990.0000')) from city_year_comparative_components where city_insee_code='T0001' and year=2025 and category_code='ssmsi-78384436563146dc6167ea53b7b5e0cd';" `
+        -Expected "2025|current-published|16.0470|100.0000" `
+        -Message "A current published rate must be selected and normalized against its fixed anchor"
+
+    Assert-SqlEquals `
+        -Sql "select source_year || '|' || component_source || '|' || effective_rate_per_1000::text from city_year_comparative_components where city_insee_code='T0001' and year=2025 and category_code='ssmsi-74a195792dd119f60822e61df3587522';" `
+        -Expected "2025|current-published|0.0000" `
+        -Message "A current published zero must outrank a positive historical value"
+
+    Assert-SqlEquals `
+        -Sql "select string_agg(source_year || ':' || component_source || ':' || trim(to_char(effective_rate_per_1000, 'FM999990.0000')), ',' order by availability_bit) from city_year_comparative_components where city_insee_code='T0001' and year=2025 and availability_bit between 2 and 4;" `
+        -Expected "2024:historical-published:2.5000,2023:historical-published:2.0000,2022:historical-published:3.0000" `
+        -Message "Components must independently select N-1, N-2 and N-3, skipping masked and mismatched historical rows and ignoring N-4"
+
+    Assert-SqlEquals `
+        -Sql "select source_year || '|' || component_source || '|' || effective_rate_per_1000::text from city_year_comparative_components where city_insee_code='T0001' and year=2025 and category_code='ssmsi-bdbeb8ca73503f8264dab16159795328';" `
+        -Expected "2025|department-masked-average|5.183200" `
+        -Message "A target-year department complement is used only after invalid historical unit and denominator candidates"
+
+    Assert-SqlEquals `
+        -Sql "select published_basket_category_count || '|' || historical_published_basket_category_count || '|' || estimated_basket_category_count || '|' || effective_basket_category_count || '|' || historical_availability_mask || '|' || oldest_exposure_source_year || '|' || comparative_index_status || '|' || comparative_index_provenance from city_year_comparative_metrics where city_insee_code='T0001' and year=2025;" `
+        -Expected "2|3|1|6|28|2022|available|partially-estimated" `
+        -Message "Temporal coverage and provenance must summarize the independently selected components"
+
+    Assert-SqlEquals `
+        -Sql "select effective_basket_category_count || '|' || (comparative_index is null)::text || '|' || comparative_index_status || '|' || comparative_index_provenance from city_year_comparative_metrics where city_insee_code='T0002' and year=2025;" `
+        -Expected "2|true|unavailable|unavailable" `
+        -Message "An index with fewer than three usable components must be unavailable"
+
+    Assert-SqlEquals `
+        -Sql "select effective_basket_category_count || '|' || comparative_index_status || '|' || comparative_index_provenance from city_year_comparative_metrics where city_insee_code='T0003' and year=2025;" `
+        -Expected "3|available|published-only" `
+        -Message "Exactly three usable components must be sufficient for an index"
+
+    Assert-SqlEquals `
+        -Sql "select published_basket_category_count || '|' || historical_published_basket_category_count || '|' || low_volume_cap_applied || '|' || (comparative_index > 35)::text from city_year_comparative_metrics where city_insee_code='T0004' and year=2025;" `
+        -Expected "5|1|false|true" `
+        -Message "The low-volume cap must require both homogeneous Infraction counts published in the target year"
+
+    Assert-SqlEquals `
+        -Sql "select (incident_count is null)::text || '|' || (rate_per_1000 is null)::text || '|' || complement_info_taux::text || '|' || publication_status::text from city_year_category_metrics where city_insee_code='T0001' and year=2025 and category_code='ssmsi-d3e9d2e40d72b8850d5283eb73bdc928';" `
+        -Expected "true|true|77.000000|masked" `
+        -Message "The temporal index must not replace or rewrite target-year raw masked values"
+
+    Assert-SqlEquals `
+        -Sql @'
+select md5(string_agg(
+    jsonb_build_array(city_insee_code, year, category_id, incident_count, rate_per_1000,
+        publication_status::text, source, count_unit, insee_pop, insee_pop_millesime,
+        insee_log, insee_log_millesime, complement_info_nombre, complement_info_taux,
+        rate_denominator)::text,
+    E'\n' order by id
+)) from crime_stats;
+'@ `
+        -Expected $rawValuesBeforeTemporalMigration `
+        -Message "The temporal migration must not modify any raw official SSMSI row"
+
     & $refreshScript `
         -ContainerName $ContainerName `
         -DatabaseName $DatabaseName `
@@ -550,8 +676,8 @@ select md5(string_agg(
 
     Assert-SqlEquals `
         -Sql "select published_basket_category_count || '|' || estimated_basket_category_count || '|' || effective_basket_category_count || '|' || low_volume_cap_applied || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='Q0001' and year=2025;" `
-        -Expected "1|0|1|false|published-only" `
-        -Message "Comparative snapshots must preserve absolute exposure coverage and provenance"
+        -Expected "1|0|1|false|unavailable" `
+        -Message "Comparative snapshots must preserve absolute exposure coverage and the minimum-coverage state"
 
     Assert-SqlEquals `
         -Sql "select effective_basket_category_count || '|' || low_volume_cap_applied || '|' || basket_index_coverage from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P01' and year=2025;" `
@@ -559,9 +685,9 @@ select md5(string_agg(
         -Message "The active snapshot must preserve exposure coverage and cap metadata"
 
     Assert-SqlEquals `
-        -Sql "select comparative_index::text || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P02' and year=2025;" `
-        -Expected "24.9|published-only" `
-        -Message "The active snapshot must preserve one-decimal exposure scores"
+        -Sql "select coalesce(comparative_index::text, 'NULL') || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P02' and year=2025;" `
+        -Expected "NULL|unavailable" `
+        -Message "The active snapshot must keep scores with fewer than three components unavailable"
 
     Assert-SqlEquals `
         -Sql "select availability_mask || '|' || estimated_availability_mask from search_metrics_city_year_comparative where snapshot_id = (select snapshot_id from search_metrics_active where singleton) and city_insee_code='V3P01' and year=2025;" `
@@ -573,7 +699,73 @@ select md5(string_agg(
         -Expected "100.0000|department-masked-average" `
         -Message "The category snapshot must preserve the estimated provenance of its derived score"
 
+    Assert-SqlEquals `
+        -Sql "select category_exposure_source_year || '|' || category_exposure_rate_per_1000::text || '|' || category_exposure_source || '|' || (rate_per_1000 is null)::text || '|' || (publication_status='masked')::text from search_metrics_city_year_category where snapshot_id=(select snapshot_id from search_metrics_active where singleton) and city_insee_code='T0001' and year=2025 and category_code='ssmsi-d3e9d2e40d72b8850d5283eb73bdc928';" `
+        -Expected "2024|2.500000|historical-published|true|true" `
+        -Message "Historical component provenance must survive in the snapshot without replacing the masked target-year rate"
+
+    Assert-SqlEquals `
+        -Sql "select (category_exposure_source_year is null and category_exposure_rate_per_1000 is null and category_exposure_score is null and category_exposure_source is null)::text from search_metrics_city_year_category where snapshot_id=(select snapshot_id from search_metrics_active where singleton) and city_insee_code='T0001' and year=2025 and category_code='temporal-non-basket';" `
+        -Expected "true" `
+        -Message "Non-basket category snapshots must not acquire exposure-component metadata"
+
+    Assert-SqlEquals `
+        -Sql "select published_basket_category_count || '|' || historical_published_basket_category_count || '|' || estimated_basket_category_count || '|' || effective_basket_category_count || '|' || historical_availability_mask || '|' || oldest_exposure_source_year || '|' || comparative_index_status || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id=(select snapshot_id from search_metrics_active where singleton) and city_insee_code='T0001' and year=2025;" `
+        -Expected "2|3|1|6|28|2022|available|partially-estimated" `
+        -Message "The active snapshot must retain temporal coverage, oldest source year and aggregate provenance"
+
+    Assert-SqlEquals `
+        -Sql "select effective_basket_category_count || '|' || coalesce(comparative_index::text, 'NULL') || '|' || comparative_index_status || '|' || comparative_index_provenance from search_metrics_city_year_comparative where snapshot_id=(select snapshot_id from search_metrics_active where singleton) and city_insee_code='T0002' and year=2025;" `
+        -Expected "2|NULL|unavailable|unavailable" `
+        -Message "The active snapshot must persist the unavailable state below three components"
+
+    $snapshotBeforeRepeat = (Invoke-Psql -Sql "select snapshot_id from search_metrics_active where singleton;" -TuplesOnly).Trim()
+    & $refreshScript `
+        -ContainerName $ContainerName `
+        -DatabaseName $DatabaseName `
+        -DatabaseUser "postgres" `
+        -DatabasePassword "postgres"
+    $snapshotAfterRepeat = (Invoke-Psql -Sql "select snapshot_id from search_metrics_active where singleton;" -TuplesOnly).Trim()
+    if ($snapshotAfterRepeat -eq $snapshotBeforeRepeat) {
+        throw "A successful repeated refresh must activate a new complete snapshot."
+    }
+    Assert-SqlEquals `
+        -Sql "select count(*) from search_metric_snapshots;" `
+        -Expected "2" `
+        -Message "A repeated successful refresh should retain only the latest two complete snapshots"
+    Assert-SqlEquals `
+        -Sql "select category_exposure_source_year || '|' || category_exposure_source from search_metrics_city_year_category where snapshot_id=(select snapshot_id from search_metrics_active where singleton) and city_insee_code='T0001' and year=2025 and category_code='ssmsi-d3e9d2e40d72b8850d5283eb73bdc928';" `
+        -Expected "2024|historical-published" `
+        -Message "Repeated refreshes must reproduce temporal component provenance"
+
     $snapshotBeforeFailure = (Invoke-Psql -Sql "select snapshot_id from search_metrics_active where singleton;" -TuplesOnly).Trim()
+    $snapshotContentsBeforeFailure = (Invoke-Psql -Sql @'
+select md5(string_agg(row_data::text, E'\n' order by row_data->>'table_name', row_data->>'key'))
+from (
+    select jsonb_build_object(
+        'table_name', 'category', 'key', city_insee_code || ':' || year || ':' || category_code,
+        'source_year', category_exposure_source_year,
+        'rate', category_exposure_rate_per_1000,
+        'source', category_exposure_source,
+        'raw_rate', rate_per_1000,
+        'publication_status', publication_status
+    ) as row_data
+    from search_metrics_city_year_category
+    where snapshot_id = (select snapshot_id from search_metrics_active where singleton)
+      and city_insee_code = 'T0001' and year = 2025
+    union all
+    select jsonb_build_object(
+        'table_name', 'comparative', 'key', city_insee_code || ':' || year,
+        'source_year', oldest_exposure_source_year,
+        'index', comparative_index,
+        'status', comparative_index_status,
+        'provenance', comparative_index_provenance
+    ) as row_data
+    from search_metrics_city_year_comparative
+    where snapshot_id = (select snapshot_id from search_metrics_active where singleton)
+      and city_insee_code = 'T0001' and year = 2025
+) rows;
+'@ -TuplesOnly).Trim()
     Invoke-Psql -Sql @'
 create function fail_v2_snapshot_for_test() returns trigger
 language plpgsql as $function$
@@ -608,8 +800,38 @@ for each row execute function fail_v2_snapshot_for_test();
         -Message "A failed v2 refresh must preserve the active snapshot pointer"
     Assert-SqlEquals `
         -Sql "select count(*) from search_metric_snapshots;" `
-        -Expected "1" `
+        -Expected "2" `
         -Message "A failed v2 refresh must roll back its partial snapshot"
+    Assert-SqlEquals `
+        -Sql @'
+select md5(string_agg(row_data::text, E'\n' order by row_data->>'table_name', row_data->>'key'))
+from (
+    select jsonb_build_object(
+        'table_name', 'category', 'key', city_insee_code || ':' || year || ':' || category_code,
+        'source_year', category_exposure_source_year,
+        'rate', category_exposure_rate_per_1000,
+        'source', category_exposure_source,
+        'raw_rate', rate_per_1000,
+        'publication_status', publication_status
+    ) as row_data
+    from search_metrics_city_year_category
+    where snapshot_id = (select snapshot_id from search_metrics_active where singleton)
+      and city_insee_code = 'T0001' and year = 2025
+    union all
+    select jsonb_build_object(
+        'table_name', 'comparative', 'key', city_insee_code || ':' || year,
+        'source_year', oldest_exposure_source_year,
+        'index', comparative_index,
+        'status', comparative_index_status,
+        'provenance', comparative_index_provenance
+    ) as row_data
+    from search_metrics_city_year_comparative
+    where snapshot_id = (select snapshot_id from search_metrics_active where singleton)
+      and city_insee_code = 'T0001' and year = 2025
+) rows;
+'@ `
+        -Expected $snapshotContentsBeforeFailure `
+        -Message "A failed refresh must preserve all active snapshot values and provenance"
     Invoke-Psql -Sql "drop trigger fail_v2_snapshot_for_test on search_metrics_city_year_comparative; drop function fail_v2_snapshot_for_test();" | Out-Null
 
     Write-Host "Absolute exposure index database test passed."

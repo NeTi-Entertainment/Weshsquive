@@ -15,6 +15,7 @@ import {
   formatComparisonCoverage,
   getComparativeIndexClassName
 } from "@/client/city-search-ui";
+import { exposureComponentSourceLabel } from "@/server/comparative-index";
 import {
   getCityDetail,
   parseCityDetailParams,
@@ -140,8 +141,11 @@ export default async function CityDetailPage({ params, searchParams }: CityDetai
           <span>Indice d’exposition calculé par l’application · {city.year}</span>
           <strong>{formatComparativeIndex(city.comparativeIndex.value)}</strong>
           <small>
-            {comparativeIndexProvenanceLabel(city.comparativeIndex.provenance)}
+            {comparativeIndexProvenanceLabel(city.comparativeIndex.provenance, city.year)}
           </small>
+          {city.comparativeIndex.oldestSourceYear !== null && city.comparativeIndex.oldestSourceYear < city.year ? (
+            <small>Donnée communale la plus ancienne : {city.comparativeIndex.oldestSourceYear}</small>
+          ) : null}
           <small>
             {comparativeIndexComponentCountLabel(city.comparativeIndex)}
           </small>
@@ -295,6 +299,19 @@ export default async function CityDetailPage({ params, searchParams }: CityDetai
                         <span className={`publication-status status-${category.publicationStatus}`}>
                           {publicationLabel(category.publicationStatus)}
                         </span>
+                        {category.exposureProvenance ? (
+                          <small className="category-exposure-source">
+                            {category.exposureScore === null
+                              ? "Indice de catégorie indisponible"
+                              : `Indice de catégorie ${formatComparativeIndex(category.exposureScore)}`}
+                            {" · "}
+                            {exposureComponentSourceLabel(
+                              category.exposureProvenance,
+                              category.exposureSourceYear,
+                              city.year
+                            )}
+                          </small>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

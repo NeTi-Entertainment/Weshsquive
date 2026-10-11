@@ -54,7 +54,7 @@ function FitNearbyBounds({ origin, points }: Pick<NearbyCitiesMapProps, "origin"
   return null;
 }
 
-function MapMetric({ point, criterion }: { point: NearbyMapPoint; criterion: NearbyMapCriterion }) {
+function MapMetric({ point, criterion, year }: { point: NearbyMapPoint; criterion: NearbyMapCriterion; year: number }) {
   if (criterion.type === "categoryRate") {
     if (point.categoryPublicationStatus !== "published" || point.categoryRatePer1000 === null) {
       return <span>Valeur non publiée</span>;
@@ -107,7 +107,7 @@ function MapMetric({ point, criterion }: { point: NearbyMapPoint; criterion: Nea
   return (
     <>
       <strong>Indice d’exposition : {formatComparativeIndex(point.comparativeIndex.value)}</strong>
-      <span>{comparativeIndexProvenanceLabel(point.comparativeIndex.provenance)}</span>
+      <span>{comparativeIndexProvenanceLabel(point.comparativeIndex.provenance, year)}</span>
       <span>{comparativeIndexComponentCountLabel(point.comparativeIndex)}</span>
       {point.comparativeIndex.lowVolumeCapApplied ? <span>Plafond faible volume appliqué</span> : null}
       {point.comparativeIndex.estimatedComponentCount > 0 ? (
@@ -166,7 +166,7 @@ export default function NearbyCitiesMap({ origin, year, points, criterion }: Nea
               <div className="nearby-map-popup">
                 <a href={`/communes/${point.inseeCode}?year=${year}`}>{point.name}</a>
                 <span>{formatDistance(point.distanceKm)} · {formatPopulation(point.population)} habitants</span>
-                <MapMetric point={point} criterion={criterion} />
+                <MapMetric point={point} criterion={criterion} year={year} />
               </div>
             </Popup>
           </CircleMarker>

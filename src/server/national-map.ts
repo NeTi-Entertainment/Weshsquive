@@ -454,12 +454,15 @@ select
   coalesce(metrics.comparative_index_status, 'unavailable') as comparative_index_status,
   metrics.basket_version,
   coalesce(metrics.published_basket_category_count, 0) as published_basket_category_count,
+  coalesce(metrics.historical_published_basket_category_count, 0) as historical_published_basket_category_count,
   coalesce(metrics.estimated_basket_category_count, 0) as estimated_basket_category_count,
   coalesce(metrics.effective_basket_category_count, 0) as effective_basket_category_count,
   metrics.basket_index_coverage,
   coalesce(metrics.low_volume_cap_applied, false) as low_volume_cap_applied,
   coalesce(metrics.availability_mask, 0) as availability_mask,
+  coalesce(metrics.historical_availability_mask, 0) as historical_availability_mask,
   coalesce(metrics.estimated_availability_mask, 0) as estimated_availability_mask,
+  metrics.oldest_exposure_source_year,
   coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance,
   map_category.category_label,
   map_category.incident_count,
@@ -553,6 +556,7 @@ type RawMapEnvironmentalRiskRow = {
   neighbor_insee_code: string | null;
   distance_km: string | null;
   comparative_index: string | number | null;
+  oldest_exposure_source_year: number | null;
   comparative_index_provenance: ComparativeIndex["provenance"];
 };
 
@@ -658,7 +662,8 @@ export async function searchNationalMap(
         neighborInseeCode: row.neighbor_insee_code,
         distanceKm: Number(row.distance_km),
         comparativeIndex: row.comparative_index === null ? null : Number(row.comparative_index),
-        comparativeIndexProvenance: row.comparative_index_provenance
+        comparativeIndexProvenance: row.comparative_index_provenance,
+        oldestSourceYear: row.oldest_exposure_source_year
       });
     }
     for (const commune of communes) {

@@ -60,6 +60,7 @@ export type ComparativeIndexVisualStyle = {
 
 export const comparativeIndexProvenanceLegend = [
   "published-only",
+  "historical-published",
   "partially-estimated",
   "estimated-only",
   "unavailable"
@@ -100,6 +101,8 @@ export function getComparativeIndexVisualStyle(
   switch (provenance) {
     case "published-only":
       return { fillColor, fillOpacity: 0.92, borderOpacity: 0.95, dashArray: null, borderWeight: 1.5 };
+    case "historical-published":
+      return { fillColor, fillOpacity: 0.8, borderOpacity: 0.95, dashArray: "4 3", borderWeight: 1.5 };
     case "partially-estimated":
       return { fillColor, fillOpacity: 0.68, borderOpacity: 0.9, dashArray: "6 4", borderWeight: 1.5 };
     case "estimated-only":
@@ -121,9 +124,13 @@ export function formatEnvironmentalRiskNeighborProvenance(
   summary: EnvironmentalRiskSummary
 ): string[] {
   return [
-    `Communes voisines avec indice publié : ${summary.publishedOnlyNeighborCount}`,
+    `Communes voisines avec indice communal de l’année cible : ${summary.publishedOnlyNeighborCount}`,
+    `Communes voisines avec indice complété par l’historique : ${summary.historicalPublishedNeighborCount}`,
     `Communes voisines avec indice partiellement estimé : ${summary.partiallyEstimatedNeighborCount}`,
-    `Communes voisines avec indice entièrement estimé : ${summary.estimatedOnlyNeighborCount}`
+    `Communes voisines avec indice entièrement estimé : ${summary.estimatedOnlyNeighborCount}`,
+    ...(summary.oldestSourceYear === null
+      ? []
+      : [`Année source la plus ancienne : ${summary.oldestSourceYear}`])
   ];
 }
 

@@ -1,4 +1,4 @@
-export const EXPOSURE_INDEX_VERSION = "absolute-exposure-v1";
+export const EXPOSURE_INDEX_VERSION = "absolute-exposure-v2";
 export const EXPOSURE_INDEX_CALIBRATION_YEAR = 2025;
 export const EXPOSURE_INDEX_GUARDRAIL_COUNT = 10;
 export const EXPOSURE_INDEX_GUARDRAIL_CAP = 35;
@@ -50,6 +50,11 @@ export const EXPOSURE_INDEX_ANCHORS = [
 
 export type ExposureRiskBand = "very-low" | "low" | "medium" | "high" | "very-high" | "extreme";
 export type ExposureRateDenominator = "population" | "housing" | "unknown";
+export type ExposureComponentSource =
+  | "current-published"
+  | "historical-published"
+  | "department-masked-average"
+  | "unavailable";
 
 export function isExposureIndexCategory(categoryCode: string): boolean {
   return EXPOSURE_INDEX_ANCHORS.some((category) => category.code === categoryCode);

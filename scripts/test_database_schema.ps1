@@ -127,6 +127,11 @@ try {
         -Expected "1" `
         -Message "The ordered migration runner did not register migration 008 on a fresh database"
 
+    Assert-SqlEquals `
+        -Sql "select count(*) from schema_migrations where migration_name = '009_temporal_exposure_fallback.sql';" `
+        -Expected "1" `
+        -Message "The ordered migration runner did not register migration 009 on a fresh database"
+
     docker exec -e PGPASSWORD=postgres $ContainerName `
         createdb -U postgres $UpgradeDatabaseName
 
@@ -170,6 +175,12 @@ try {
         -Sql "select count(*) from schema_migrations where migration_name = '008_absolute_exposure_index.sql';" `
         -Expected "1" `
         -Message "The ordered migration runner did not register migration 008 on an upgraded database"
+
+    Assert-SqlEquals `
+        -TargetDatabase $UpgradeDatabaseName `
+        -Sql "select count(*) from schema_migrations where migration_name = '009_temporal_exposure_fallback.sql';" `
+        -Expected "1" `
+        -Message "The ordered migration runner did not register migration 009 on an upgraded database"
 
     Assert-SqlEquals `
         -Sql "select count(*) from pg_extension where extname in ('postgis','postgis_topology');" `
@@ -247,14 +258,14 @@ try {
         -Message "The auditable comparative component view is missing"
 
     Assert-SqlEquals `
-        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_components' and column_name in ('city_insee_code','year','category_code','availability_bit','anchored_rate_denominator','anchored_count_unit','anchor_rate_per_1000','component_source','effective_rate_per_1000','component_exposure_score');" `
-        -Expected "10" `
-        -Message "The absolute exposure component view does not expose its audit contract"
+        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_components' and column_name in ('city_insee_code','year','category_code','availability_bit','anchored_rate_denominator','anchored_count_unit','anchor_rate_per_1000','source_year','component_source','effective_rate_per_1000','component_exposure_score');" `
+        -Expected "11" `
+        -Message "The temporal exposure component view does not expose its audit contract"
 
     Assert-SqlEquals `
-        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_metrics' and column_name in ('published_basket_category_count','estimated_basket_category_count','effective_basket_category_count','basket_index_coverage','low_volume_cap_applied','estimated_availability_mask','comparative_index_provenance','comparative_index_status','comparative_index','basket_version');" `
-        -Expected "10" `
-        -Message "The comparative metrics view does not expose the absolute exposure contract"
+        -Sql "select count(*) from information_schema.columns where table_name = 'city_year_comparative_metrics' and column_name in ('published_basket_category_count','historical_published_basket_category_count','estimated_basket_category_count','effective_basket_category_count','basket_index_coverage','low_volume_cap_applied','estimated_availability_mask','historical_availability_mask','oldest_exposure_source_year','comparative_index_provenance','comparative_index_status','comparative_index','basket_version');" `
+        -Expected "13" `
+        -Message "The comparative metrics view does not expose the temporal exposure contract"
 
     Invoke-Psql -Sql @"
 insert into regions(code, name) values ('11', 'Ile-de-France');
@@ -281,8 +292,8 @@ select 'B0999', 2025, id, 'unknown', 'fixture' from crime_categories where code 
 
     Assert-SqlEquals `
         -Sql "select count(distinct basket_version) || ':' || min(basket_version) from city_year_comparative_metrics where year=2025;" `
-        -Expected "1:absolute-exposure-v1" `
-        -Message "Comparative metrics must expose the fixed absolute exposure formula version"
+        -Expected "1:absolute-exposure-v2" `
+        -Message "Comparative metrics must expose the temporal absolute exposure formula version"
 
     Write-Host "Database schema test passed."
 }

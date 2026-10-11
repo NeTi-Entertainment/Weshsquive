@@ -494,7 +494,7 @@ export default function NearbyCitiesPanel({
                   aria-label={`Indice ${formatComparativeIndex(result.comparativeIndex.value)}. ${describeComparativeIndex(result.comparativeIndex)} ${describeBasketAvailability(result.comparativeIndex.basketAvailability)}`}
                 >
                   <strong>{formatComparativeIndex(result.comparativeIndex.value)}</strong>
-                  <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance)}</span>
+                  <span>{comparativeIndexProvenanceLabel(result.comparativeIndex.provenance, year)}</span>
                   <span>{comparativeIndexComponentCountLabel(result.comparativeIndex)}</span>
                   <span>
                     {result.comparativeIndex.lowVolumeCapApplied ? "Plafond faible volume appliqué" : "Échelle fixe calibrée sur les taux 2025"}

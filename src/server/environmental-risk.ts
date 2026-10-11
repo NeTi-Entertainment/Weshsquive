@@ -13,12 +13,19 @@ export type EnvironmentalRiskSummary = {
   radiusKm: EnvironmentalRadiusKm;
   value: number | null;
   status: EnvironmentalRiskStatus;
-  provenance: "published-only" | "partially-estimated" | "unavailable";
+  provenance:
+    | "published-only"
+    | "historical-published"
+    | "partially-estimated"
+    | "estimated-only"
+    | "unavailable";
   scoredNeighborCount: number;
   totalNeighborCount: number;
   publishedOnlyNeighborCount: number;
+  historicalPublishedNeighborCount: number;
   partiallyEstimatedNeighborCount: number;
   estimatedOnlyNeighborCount: number;
+  oldestSourceYear: number | null;
   weightedCoverageRatio: number | null;
 };
 
@@ -28,6 +35,7 @@ export type EnvironmentalNeighborRow = {
   distanceKm: number;
   comparativeIndex: number | null;
   comparativeIndexProvenance: ComparativeIndexProvenance;
+  oldestSourceYear: number | null;
 };
 
 type CityEnvironmentalRiskQuery = {
@@ -62,6 +70,7 @@ select
   neighbor.insee_code as neighbor_insee_code,
   neighbor.distance_km,
   metrics.comparative_index,
+  metrics.oldest_exposure_source_year,
   coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance
 from target
 cross join environmental_radii
@@ -112,6 +121,7 @@ select
   neighbor.insee_code as neighbor_insee_code,
   neighbor.distance_km,
   metrics.comparative_index,
+  metrics.oldest_exposure_source_year,
   coalesce(metrics.comparative_index_provenance, 'unavailable') as comparative_index_provenance
 from targets
 left join lateral (
@@ -161,8 +171,10 @@ export function summarizeEnvironmentalRisk(
   let weightedIndex = 0;
   let scoredNeighborCount = 0;
   let publishedOnlyNeighborCount = 0;
+  let historicalPublishedNeighborCount = 0;
   let partiallyEstimatedNeighborCount = 0;
   let estimatedOnlyNeighborCount = 0;
+  let oldestSourceYear: number | null = null;
 
   for (const neighbor of neighbors) {
     const weight = 1 - neighbor.distanceKm / radiusKm;
@@ -173,6 +185,7 @@ export function summarizeEnvironmentalRisk(
       neighbor.comparativeIndex === null ||
       !Number.isFinite(neighbor.comparativeIndex) ||
       (provenance !== "published-only" &&
+        provenance !== "historical-published" &&
         provenance !== "partially-estimated" &&
         provenance !== "estimated-only")
     ) {
@@ -182,10 +195,19 @@ export function summarizeEnvironmentalRisk(
     scoredNeighborCount += 1;
     if (provenance === "published-only") {
       publishedOnlyNeighborCount += 1;
+    } else if (provenance === "historical-published") {
+      historicalPublishedNeighborCount += 1;
     } else if (provenance === "partially-estimated") {
       partiallyEstimatedNeighborCount += 1;
     } else {
       estimatedOnlyNeighborCount += 1;
+    }
+    if (
+      neighbor.oldestSourceYear !== null &&
+      Number.isInteger(neighbor.oldestSourceYear) &&
+      (oldestSourceYear === null || neighbor.oldestSourceYear < oldestSourceYear)
+    ) {
+      oldestSourceYear = neighbor.oldestSourceYear;
     }
     scoredWeight += weight;
     weightedIndex += neighbor.comparativeIndex * weight;
@@ -197,7 +219,13 @@ export function summarizeEnvironmentalRisk(
     ? "unavailable"
     : publishedOnlyNeighborCount === scoredNeighborCount
       ? "published-only"
-      : "partially-estimated";
+      : estimatedOnlyNeighborCount === scoredNeighborCount
+        ? "estimated-only"
+        : partiallyEstimatedNeighborCount > 0 || estimatedOnlyNeighborCount > 0
+          ? "partially-estimated"
+          : historicalPublishedNeighborCount > 0
+            ? "historical-published"
+            : "unavailable";
 
   return {
     radiusKm,
@@ -207,8 +235,10 @@ export function summarizeEnvironmentalRisk(
     scoredNeighborCount,
     totalNeighborCount: neighbors.length,
     publishedOnlyNeighborCount,
+    historicalPublishedNeighborCount,
     partiallyEstimatedNeighborCount,
     estimatedOnlyNeighborCount,
+    oldestSourceYear,
     weightedCoverageRatio
   };
 }
@@ -225,8 +255,10 @@ function emptySummary(
     scoredNeighborCount: 0,
     totalNeighborCount: 0,
     publishedOnlyNeighborCount: 0,
+    historicalPublishedNeighborCount: 0,
     partiallyEstimatedNeighborCount: 0,
     estimatedOnlyNeighborCount: 0,
+    oldestSourceYear: null,
     weightedCoverageRatio: null
   };
 }

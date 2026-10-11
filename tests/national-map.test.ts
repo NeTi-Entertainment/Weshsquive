@@ -8,12 +8,12 @@ import {
 } from "../src/server/national-map";
 
 const partiallyEstimatedBasketAvailability = [
-  { code: "ssmsi-78384436563146dc6167ea53b7b5e0cd", label: "Cambriolages de logement", available: true, estimated: false },
-  { code: "ssmsi-74a195792dd119f60822e61df3587522", label: "Vols de véhicule", available: true, estimated: false },
-  { code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928", label: "Vols dans les véhicules", available: true, estimated: false },
-  { code: "ssmsi-bf6b19b3e53b90f6594ec2e8303c5778", label: "Destructions et dégradations volontaires", available: true, estimated: false },
-  { code: "ssmsi-a2601b900aa009440624697e1d74e4a9", label: "Violences physiques hors cadre familial", available: true, estimated: true },
-  { code: "ssmsi-bdbeb8ca73503f8264dab16159795328", label: "Trafic de stupéfiants", available: true, estimated: true }
+  { code: "ssmsi-78384436563146dc6167ea53b7b5e0cd", label: "Cambriolages de logement", available: true, estimated: false, historical: false },
+  { code: "ssmsi-74a195792dd119f60822e61df3587522", label: "Vols de véhicule", available: true, estimated: false, historical: false },
+  { code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928", label: "Vols dans les véhicules", available: true, estimated: false, historical: false },
+  { code: "ssmsi-bf6b19b3e53b90f6594ec2e8303c5778", label: "Destructions et dégradations volontaires", available: true, estimated: false, historical: false },
+  { code: "ssmsi-a2601b900aa009440624697e1d74e4a9", label: "Violences physiques hors cadre familial", available: true, estimated: true, historical: false },
+  { code: "ssmsi-bdbeb8ca73503f8264dab16159795328", label: "Trafic de stupéfiants", available: true, estimated: true, historical: false }
 ];
 
 const unavailableBasketAvailability = partiallyEstimatedBasketAvailability.map((category) => ({
@@ -162,10 +162,13 @@ describe("national map parameters", () => {
     expect(query.text).toContain("category.rate_denominator in ('population', 'housing')");
     expect(query.text).toContain("metrics.snapshot_id = active_snapshot.snapshot_id");
     expect(query.text).toContain("metrics.estimated_basket_category_count");
+    expect(query.text).toContain("metrics.historical_published_basket_category_count");
     expect(query.text).toContain("metrics.effective_basket_category_count");
     expect(query.text).toContain("metrics.basket_index_coverage");
     expect(query.text).toContain("metrics.low_volume_cap_applied");
     expect(query.text).toContain("metrics.estimated_availability_mask");
+    expect(query.text).toContain("metrics.historical_availability_mask");
+    expect(query.text).toContain("metrics.oldest_exposure_source_year");
     expect(query.text).toContain("exposure_index_category_anchors");
     expect(query.text).not.toContain("minimum_reference_cohort_size");
     expect(query.text).toContain("metrics.comparative_index_provenance");
@@ -247,11 +250,13 @@ describe("national map parameters", () => {
       value: 54,
       status: "available",
       provenance: "partially-estimated",
-      basketVersion: "absolute-exposure-v1",
+      basketVersion: "absolute-exposure-v2",
       publishedComponentCount: 4,
+      historicalPublishedComponentCount: 0,
       estimatedComponentCount: 2,
       availableComponentCount: 6,
       coverageRatio: 1,
+      oldestSourceYear: 2025,
       lowVolumeCapApplied: false,
       basketCategoryCount: 6,
       basketAvailability: partiallyEstimatedBasketAvailability
@@ -337,9 +342,11 @@ describe("national map parameters", () => {
       provenance: "unavailable",
       basketVersion: null,
       publishedComponentCount: 0,
+      historicalPublishedComponentCount: 0,
       estimatedComponentCount: 0,
       availableComponentCount: 0,
       coverageRatio: 0,
+      oldestSourceYear: null,
       lowVolumeCapApplied: false,
       basketCategoryCount: 6,
       basketAvailability: unavailableBasketAvailability
@@ -409,6 +416,7 @@ describe("national map parameters", () => {
             neighbor_insee_code: `3300${index}`,
             distance_km: String(index + 1),
             comparative_index: comparativeIndex,
+            oldest_exposure_source_year: 2024,
             comparative_index_provenance: "partially-estimated"
           })),
           rowCount: 3
@@ -434,8 +442,10 @@ describe("national map parameters", () => {
       scoredNeighborCount: 3,
       totalNeighborCount: 3,
       publishedOnlyNeighborCount: 0,
+      historicalPublishedNeighborCount: 0,
       partiallyEstimatedNeighborCount: 3,
-      estimatedOnlyNeighborCount: 0
+      estimatedOnlyNeighborCount: 0,
+      oldestSourceYear: 2024
     });
   });
 
@@ -489,14 +499,17 @@ function rawCityRow(overrides: Record<string, unknown> = {}) {
     population_year: 2023,
     comparative_index: 54,
     comparative_index_status: "available",
-    basket_version: "absolute-exposure-v1",
+    basket_version: "absolute-exposure-v2",
     published_basket_category_count: 4,
+    historical_published_basket_category_count: 0,
     estimated_basket_category_count: 2,
     effective_basket_category_count: 6,
     basket_index_coverage: "1",
     low_volume_cap_applied: false,
     availability_mask: 15,
+    historical_availability_mask: 0,
     estimated_availability_mask: 48,
+    oldest_exposure_source_year: 2025,
     comparative_index_provenance: "partially-estimated",
     published_category_count: 12,
     total_category_count: 15,

@@ -5,6 +5,7 @@ import {
   comparativeIndexComponentCountLabel,
   comparativeIndexProvenanceLabel,
   describeComparativeIndex,
+  exposureComponentSourceLabel,
   findCategory,
   formatCategoryRate,
   formatComparativeIndex,
@@ -104,7 +105,7 @@ export default function CityComparisonTable({
                   title={describeComparativeIndex(city.comparativeIndex)}
                 >
                   <strong>{formatComparativeIndex(city.comparativeIndex.value)}</strong>
-                  <span>{comparativeIndexProvenanceLabel(city.comparativeIndex.provenance)}</span>
+                  <span>{comparativeIndexProvenanceLabel(city.comparativeIndex.provenance, Number(year))}</span>
                   <span>{comparativeIndexComponentCountLabel(city.comparativeIndex)}</span>
                   {city.comparativeIndex.lowVolumeCapApplied ? <span>Plafond faible volume appliqué</span> : null}
                 </td>
@@ -121,15 +122,38 @@ export default function CityComparisonTable({
                   }
 
                   if (value.publicationStatus === "masked") {
-                    return <td className="muted-cell" key={city.inseeCode}><strong>Masqué</strong><span>Valeur non publiée</span></td>;
+                    return <td
+                      className="muted-cell"
+                      key={city.inseeCode}
+                      title={exposureComponentSourceLabel(
+                        value.exposureProvenance,
+                        value.exposureSourceYear,
+                        Number(year)
+                      ) ?? undefined}
+                    ><strong>Masqué</strong><span>Valeur non publiée</span></td>;
                   }
 
                   if (value.publicationStatus === "unknown") {
-                    return <td className="muted-cell" key={city.inseeCode}><strong>Non renseigné</strong><span>Statut de publication inconnu</span></td>;
+                    return <td
+                      className="muted-cell"
+                      key={city.inseeCode}
+                      title={exposureComponentSourceLabel(
+                        value.exposureProvenance,
+                        value.exposureSourceYear,
+                        Number(year)
+                      ) ?? undefined}
+                    ><strong>Non renseigné</strong><span>Statut de publication inconnu</span></td>;
                   }
 
                   return (
-                    <td key={city.inseeCode}>
+                    <td
+                      key={city.inseeCode}
+                      title={exposureComponentSourceLabel(
+                        value.exposureProvenance,
+                        value.exposureSourceYear,
+                        Number(year)
+                      ) ?? undefined}
+                    >
                       <strong>{formatInteger(value.incidentCount)}</strong>
                       <span>{value.countUnit ?? "Unité inconnue"}</span>
                       <span>

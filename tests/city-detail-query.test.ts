@@ -23,10 +23,16 @@ describe("city detail queries", () => {
     expect(query.text).toContain("rate_denominator");
     expect(query.text).toContain("category_code");
     expect(query.text).toContain("tm.estimated_basket_category_count");
+    expect(query.text).toContain("tm.historical_published_basket_category_count");
     expect(query.text).toContain("tm.effective_basket_category_count");
     expect(query.text).toContain("tm.basket_index_coverage");
     expect(query.text).toContain("tm.low_volume_cap_applied");
     expect(query.text).toContain("tm.estimated_availability_mask");
+    expect(query.text).toContain("tm.historical_availability_mask");
+    expect(query.text).toContain("tm.oldest_exposure_source_year");
+    expect(query.text).toContain("category.category_exposure_source_year");
+    expect(query.text).toContain("category.category_exposure_rate_per_1000");
+    expect(query.text).toContain("category.category_exposure_source");
     expect(query.text).toContain("tm.comparative_index_provenance");
     expect(query.text).toContain("tm.basket_version");
     expect(query.text).not.toContain("coalesce(tm.basket_version");
@@ -79,8 +85,8 @@ describe("city detail queries", () => {
               department_name: "Val-d'Oise",
               region_code: "11",
               region_name: "Ile-de-France",
-              latitude: null,
-              longitude: null,
+              latitude: "49.4515",
+              longitude: "2.1664",
               population: 1044,
               population_year: 2023,
               published_category_count: 1,
@@ -88,17 +94,20 @@ describe("city detail queries", () => {
               coverage_ratio: "1",
               comparative_index: null,
               comparative_index_status: "unavailable",
-              basket_version: "absolute-exposure-v1",
+              basket_version: "absolute-exposure-v2",
               published_basket_category_count: 0,
+              historical_published_basket_category_count: 0,
               estimated_basket_category_count: 0,
               effective_basket_category_count: 0,
               basket_index_coverage: "0",
               low_volume_cap_applied: false,
               availability_mask: 0,
+              historical_availability_mask: 0,
               estimated_availability_mask: 0,
+              oldest_exposure_source_year: null,
               comparative_index_provenance: "unavailable",
               categories: [{
-                code: "ssmsi-example",
+                code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928",
                 label: "Exemple masqué",
                 incidentCount: null,
                 ratePer1000: null,
@@ -108,7 +117,11 @@ describe("city detail queries", () => {
                 populationDenominatorYear: 2023,
                 housingDenominator: null,
                 housingDenominatorYear: null,
-                publicationStatus: "masked"
+                publicationStatus: "masked",
+                exposureSourceYear: 2024,
+                exposureProvenance: "historical-published",
+                exposureRatePer1000: 2.5,
+                exposureScore: 18.874
               }]
             }],
             rowCount: 1
@@ -121,15 +134,21 @@ describe("city detail queries", () => {
 
         if (text.includes("environmental_radii")) {
           return {
-            rows: [25, 50, 100, 200].map((radius_km) => ({
+            rows: [25, 50, 100, 200].flatMap((radius_km) => [
+              { comparative_index: "10.0", neighbor_insee_code: "75001" },
+              { comparative_index: "20.0", neighbor_insee_code: "75002" },
+              { comparative_index: "30.0", neighbor_insee_code: "75003" }
+            ].map((neighbor) => ({
               radius_km,
-              target_coordinates_available: false,
+              target_coordinates_available: true,
               target_insee_code: "95584",
-              neighbor_insee_code: null,
-              distance_km: null,
-              comparative_index: null
-            })),
-            rowCount: 4
+              neighbor_insee_code: neighbor.neighbor_insee_code,
+              distance_km: 1,
+              comparative_index: neighbor.comparative_index,
+              comparative_index_provenance: "published-only",
+              oldest_exposure_source_year: 2025
+            }))),
+            rowCount: 12
           };
         }
 
@@ -145,25 +164,34 @@ describe("city detail queries", () => {
     expect(db.query.mock.calls[3]?.[1]).toEqual(["95584", 2025, "42"]);
     expect(db.query.mock.calls[3]?.[0]).toContain("environmental_radii");
     expect(detail?.environmentalRisk.map(({ radiusKm, status }) => [radiusKm, status])).toEqual([
-      [25, "coordinates-unavailable"],
-      [50, "coordinates-unavailable"],
-      [100, "coordinates-unavailable"],
-      [200, "coordinates-unavailable"]
+      [25, "comparable"],
+      [50, "comparable"],
+      [100, "comparable"],
+      [200, "comparable"]
+    ]);
+    expect(detail?.environmentalRisk.map(({ value, scoredNeighborCount }) => [value, scoredNeighborCount])).toEqual([
+      [20, 3], [20, 3], [20, 3], [20, 3]
     ]);
     expect(detail?.comparativeIndex).toMatchObject({
-      basketVersion: "absolute-exposure-v1",
+      basketVersion: "absolute-exposure-v2",
       status: "unavailable",
       provenance: "unavailable",
       publishedComponentCount: 0,
+      historicalPublishedComponentCount: 0,
       estimatedComponentCount: 0,
       availableComponentCount: 0,
       coverageRatio: 0,
+      oldestSourceYear: null,
       lowVolumeCapApplied: false
     });
     expect(detail?.categories[0]).toMatchObject({
       publicationStatus: "masked",
       incidentCount: null,
-      ratePer1000: null
+      ratePer1000: null,
+      exposureSourceYear: 2024,
+      exposureProvenance: "historical-published",
+      exposureRatePer1000: 2.5,
+      exposureScore: 18.874
     });
     expect(detail?.categories[0]).not.toHaveProperty("complementInfoNombre");
     expect(detail?.categories[0]).not.toHaveProperty("complementInfoTaux");

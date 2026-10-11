@@ -1,11 +1,12 @@
 import {
   comparativeIndexProvenanceLabel,
+  exposureComponentSourceLabel,
   type ComparativeIndex,
   type ComparativeIndexStatus
 } from "@/server/comparative-index";
 import { getExposureRiskBand } from "@/shared/exposure-index";
 
-export { comparativeIndexProvenanceLabel };
+export { comparativeIndexProvenanceLabel, exposureComponentSourceLabel };
 
 export type CitySearchFormState = {
   year: string;
@@ -49,6 +50,10 @@ export type CitySearchCategory = {
   housingDenominator: number | null;
   housingDenominatorYear: number | null;
   publicationStatus: "published" | "masked" | "unknown";
+  exposureSourceYear: number | null;
+  exposureProvenance: "current-published" | "historical-published" | "department-masked-average" | "unavailable" | null;
+  exposureRatePer1000: number | null;
+  exposureScore: number | null;
 };
 
 export type CitySearchResult = {
@@ -321,12 +326,15 @@ export function describeComparativeIndex(index: ComparativeIndex): string {
   const capNote = index.lowVolumeCapApplied
     ? " Le score a été plafonné à 35 selon la règle de faible volume publiée."
     : "";
+  const historyNote = index.historicalPublishedComponentCount > 0
+    ? " Les taux communaux publiés jusqu’à trois ans avant le millésime cible sont privilégiés sur les compléments départementaux."
+    : "";
 
-  return `${provenance} · ${componentCounts}${estimationNote}${capNote}`;
+  return `${provenance} · ${componentCounts}${historyNote}${estimationNote}${capNote}`;
 }
 
 export function comparativeIndexComponentCountLabel(index: ComparativeIndex): string {
-  return `Couverture du panier : ${index.availableComponentCount}/${index.basketCategoryCount} composantes exploitables (${index.publishedComponentCount} publiées, ${index.estimatedComponentCount} estimées)`;
+  return `Couverture du panier : ${index.availableComponentCount}/${index.basketCategoryCount} composantes exploitables (${index.publishedComponentCount} publiées pour l’année cible, ${index.historicalPublishedComponentCount} historiques, ${index.estimatedComponentCount} estimées)`;
 }
 
 export function formatCoverage(published: number, total: number): string {
@@ -354,13 +362,14 @@ export function formatComparisonCoverage(published: number, total: number): stri
 export function describeBasketAvailability(
   availability: ComparativeIndex["basketAvailability"]
 ): string {
-  const published = availability.filter((category) => category.available && !category.estimated);
+  const published = availability.filter((category) => category.available && !category.historical && !category.estimated);
+  const historical = availability.filter((category) => category.available && category.historical);
   const estimated = availability.filter((category) => category.available && category.estimated);
   const unavailable = availability.filter((category) => !category.available);
   const labels = (categories: typeof availability) =>
     categories.length > 0 ? categories.map((category) => category.label).join(", ") : "aucune";
 
-  return `Publiées : ${labels(published)}. Estimées : ${labels(estimated)}. Indisponibles : ${labels(unavailable)}.`;
+  return `Publiées pour l’année cible : ${labels(published)}. Historiques : ${labels(historical)}. Estimées : ${labels(estimated)}. Indisponibles : ${labels(unavailable)}.`;
 }
 
 export function comparativeIndexStatusLabel(

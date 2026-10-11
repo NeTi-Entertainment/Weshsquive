@@ -14,12 +14,12 @@ const params = parseNearbyCitySearchParams("95594", new URLSearchParams({
 }));
 
 const partiallyEstimatedBasketAvailability = [
-  { code: "ssmsi-78384436563146dc6167ea53b7b5e0cd", label: "Cambriolages de logement", available: true, estimated: false },
-  { code: "ssmsi-74a195792dd119f60822e61df3587522", label: "Vols de véhicule", available: true, estimated: false },
-  { code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928", label: "Vols dans les véhicules", available: true, estimated: false },
-  { code: "ssmsi-bf6b19b3e53b90f6594ec2e8303c5778", label: "Destructions et dégradations volontaires", available: true, estimated: false },
-  { code: "ssmsi-a2601b900aa009440624697e1d74e4a9", label: "Violences physiques hors cadre familial", available: true, estimated: true },
-  { code: "ssmsi-bdbeb8ca73503f8264dab16159795328", label: "Trafic de stupéfiants", available: true, estimated: true }
+  { code: "ssmsi-78384436563146dc6167ea53b7b5e0cd", label: "Cambriolages de logement", available: true, estimated: false, historical: false },
+  { code: "ssmsi-74a195792dd119f60822e61df3587522", label: "Vols de véhicule", available: true, estimated: false, historical: false },
+  { code: "ssmsi-d3e9d2e40d72b8850d5283eb73bdc928", label: "Vols dans les véhicules", available: true, estimated: false, historical: false },
+  { code: "ssmsi-bf6b19b3e53b90f6594ec2e8303c5778", label: "Destructions et dégradations volontaires", available: true, estimated: false, historical: false },
+  { code: "ssmsi-a2601b900aa009440624697e1d74e4a9", label: "Violences physiques hors cadre familial", available: true, estimated: true, historical: false },
+  { code: "ssmsi-bdbeb8ca73503f8264dab16159795328", label: "Trafic de stupéfiants", available: true, estimated: true, historical: false }
 ];
 
 const estimatedOnlyBasketAvailability = partiallyEstimatedBasketAvailability.map((category) => ({
@@ -66,14 +66,17 @@ describe("nearby city search", () => {
       populationYear: 2023,
       comparative_index: 82,
       comparative_index_status: "available",
-      basket_version: "absolute-exposure-v1",
+      basket_version: "absolute-exposure-v2",
       published_basket_category_count: 4,
+      historical_published_basket_category_count: 0,
       estimated_basket_category_count: 2,
       effective_basket_category_count: 6,
       basket_index_coverage: "1",
       low_volume_cap_applied: false,
       availability_mask: 15,
+      historical_availability_mask: 0,
       estimated_availability_mask: 48,
+      oldest_exposure_source_year: 2025,
       comparative_index_provenance: "partially-estimated",
       categoryLabel: null,
       categoryRatePer1000: null,
@@ -117,11 +120,13 @@ describe("nearby city search", () => {
           value: 82,
           status: "available",
           provenance: "partially-estimated",
-          basketVersion: "absolute-exposure-v1",
+          basketVersion: "absolute-exposure-v2",
           publishedComponentCount: 4,
+          historicalPublishedComponentCount: 0,
           estimatedComponentCount: 2,
           availableComponentCount: 6,
           coverageRatio: 1,
+          oldestSourceYear: 2025,
           lowVolumeCapApplied: false,
           basketCategoryCount: 6,
           basketAvailability: partiallyEstimatedBasketAvailability
@@ -195,6 +200,7 @@ describe("nearby city search", () => {
     expect(batchSql).toContain("metrics.year = $2");
     expect(batchSql).toContain("metrics.snapshot_id = $3");
     expect(batchSql).toContain("metrics.comparative_index_provenance");
+    expect(batchSql).toContain("metrics.oldest_exposure_source_year");
     expect(batchSql).toContain("st_dwithin");
     expect(batchSql).not.toContain("population_min");
     expect(batchSql).not.toContain("limit 10");
@@ -207,8 +213,10 @@ describe("nearby city search", () => {
       scoredNeighborCount: 3,
       totalNeighborCount: 4,
       publishedOnlyNeighborCount: 3,
+      historicalPublishedNeighborCount: 0,
       partiallyEstimatedNeighborCount: 0,
-      estimatedOnlyNeighborCount: 0
+      estimatedOnlyNeighborCount: 0,
+      oldestSourceYear: 2025
     });
     expect(result.mapPoints[0].environmentalRisk?.weightedCoverageRatio).toBeCloseTo(
       2.1 / 3.02
@@ -223,8 +231,10 @@ describe("nearby city search", () => {
       scoredNeighborCount: 3,
       totalNeighborCount: 3,
       publishedOnlyNeighborCount: 3,
+      historicalPublishedNeighborCount: 0,
       partiallyEstimatedNeighborCount: 0,
       estimatedOnlyNeighborCount: 0,
+      oldestSourceYear: 2025,
       weightedCoverageRatio: 1
     });
   });
@@ -317,10 +327,16 @@ describe("nearby city search", () => {
     expect(query.text).toContain("as origin_exists");
     expect(query.text).toContain("from origin_status\ncross join filtered_count");
     expect(query.text).toContain("metrics.estimated_basket_category_count");
+    expect(query.text).toContain("metrics.historical_published_basket_category_count");
     expect(query.text).toContain("metrics.effective_basket_category_count");
     expect(query.text).toContain("metrics.basket_index_coverage");
     expect(query.text).toContain("metrics.low_volume_cap_applied");
     expect(query.text).toContain("metrics.estimated_availability_mask");
+    expect(query.text).toContain("metrics.historical_availability_mask");
+    expect(query.text).toContain("metrics.oldest_exposure_source_year");
+    expect(query.text).toContain("'historical_published_basket_category_count'");
+    expect(query.text).toContain("'historical_availability_mask'");
+    expect(query.text).toContain("'oldest_exposure_source_year'");
     expect(query.text).not.toContain("minimum_reference_cohort_size");
     expect(query.text).toContain("metrics.comparative_index_provenance");
     expect(query.text).toContain("metrics.basket_version");
@@ -329,7 +345,7 @@ describe("nearby city search", () => {
     expect(query.text).not.toContain("complement_info_taux");
   });
 
-  it("maps v3 provenance and keeps a masked selected category null", async () => {
+  it("maps temporal v2 provenance and keeps a masked selected category null", async () => {
     const selectedParams = parseNearbyCitySearchParams("95594", new URLSearchParams({
       year: "2025",
       radiusKm: "25",
@@ -358,14 +374,17 @@ describe("nearby city search", () => {
           coverage_ratio: "0",
           comparative_index: 71,
           comparative_index_status: "available",
-          basket_version: "absolute-exposure-v1",
+          basket_version: "absolute-exposure-v2",
           published_basket_category_count: 0,
+          historical_published_basket_category_count: 0,
           estimated_basket_category_count: 6,
           effective_basket_category_count: 6,
           basket_index_coverage: "1",
           low_volume_cap_applied: false,
           availability_mask: 0,
+          historical_availability_mask: 0,
           estimated_availability_mask: 63,
+          oldest_exposure_source_year: 2025,
           comparative_index_provenance: "estimated-only",
           selected_category_label: "Exemple masqué",
           selected_category_incident_count: null,
@@ -390,11 +409,13 @@ describe("nearby city search", () => {
       value: 71,
       status: "available",
       provenance: "estimated-only",
-      basketVersion: "absolute-exposure-v1",
+      basketVersion: "absolute-exposure-v2",
       publishedComponentCount: 0,
+      historicalPublishedComponentCount: 0,
       estimatedComponentCount: 6,
       availableComponentCount: 6,
       coverageRatio: 1,
+      oldestSourceYear: 2025,
       lowVolumeCapApplied: false,
       basketCategoryCount: 6,
       basketAvailability: estimatedOnlyBasketAvailability
@@ -433,14 +454,17 @@ function makeMapPoint(inseeCode: string) {
     populationYear: 2023,
     comparative_index: 82,
     comparative_index_status: "available",
-    basket_version: "absolute-exposure-v1",
+    basket_version: "absolute-exposure-v2",
     published_basket_category_count: 4,
+    historical_published_basket_category_count: 0,
     estimated_basket_category_count: 2,
     effective_basket_category_count: 6,
     basket_index_coverage: "1",
     low_volume_cap_applied: false,
     availability_mask: 15,
+    historical_availability_mask: 0,
     estimated_availability_mask: 48,
+    oldest_exposure_source_year: 2025,
     comparative_index_provenance: "partially-estimated",
     categoryLabel: null,
     categoryRatePer1000: null,
@@ -467,6 +491,7 @@ function environmentalRow(
     neighbor_insee_code: neighborInseeCode,
     distance_km: distanceKm,
     comparative_index: comparativeIndex,
+    oldest_exposure_source_year: comparativeIndex === null ? null : 2025,
     comparative_index_provenance: comparativeIndex === null ? "unavailable" : "published-only"
   };
 }
